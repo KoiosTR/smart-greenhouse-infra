@@ -1,0 +1,72 @@
+services:
+  # 1. MQTT Broker (Uç Cihaz İletişimi) - GEÇİCİ OLARAK KAPALI
+  # mosquitto:
+  #   image: eclipse-mosquitto:2.0
+  #   ... (Devre dışı)
+
+  # 2. Apache Kafka (Mesaj Kuyruğu) - GEÇİCİ OLARAK KAPALI
+  # kafka:
+  #   image: apache/kafka:latest
+  #   ... (Devre dışı)
+
+  # 3. TimescaleDB (Yerel Veritabanı) - SUPABASE KULLANILDIĞI İÇİN KAPALI
+  # timescaledb:
+  #   image: timescale/timescaledb:latest-pg14
+  #   ... (Devre dışı)
+
+  # 4. FastAPI Backend (AI Modeli ve Veri Akışı)
+  fastapi:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: greenhouse_api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - DB_URL=postgresql://postgres.wiaaahasaqyzirjyxuro:ardagonca9380036@aws-0-eu-central-1.pooler.supabase.com:5432/postgres
+      - SUPABASE_DB_URL=postgresql://postgres.wiaaahasaqyzirjyxuro:ardagonca9380036@aws-0-eu-central-1.pooler.supabase.com:5432/postgres
+      - KAFKA_BROKER=kafka:9092
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    networks:
+      - greenhouse_network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # 4.5 MQTT to Kafka Bridge - GEÇİCİ OLARAK KAPALI
+  # mqtt_bridge:
+  #   ... (Devre dışı)
+
+  # 5. React Frontend Paneli - LOKALDE ÇALIŞTIRILIYOR (npm run dev)
+  # frontend:
+  #   ... (Devre dışı)
+
+  # 6. Verdify Daily Sync (Günlük Veri Çekme)
+  verdify_sync:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: greenhouse_verdify_sync
+    command: python -u daily_verdify_sync.py
+    environment:
+      - SUPABASE_DB_URL=postgresql://postgres.wiaaahasaqyzirjyxuro:ardagonca9380036@aws-0-eu-central-1.pooler.supabase.com:5432/postgres
+    networks:
+      - greenhouse_network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  greenhouse_network:
+    driver: bridge
+
+volumes:
+  timescaledb_data:

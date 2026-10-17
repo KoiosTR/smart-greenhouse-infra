@@ -1,0 +1,423 @@
+.weather-map-container {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 64px); /* assuming header is 64px */
+  overflow: hidden;
+  font-family: 'Inter', sans-serif;
+}
+
+.leaflet-map-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.leaflet-control-attribution {
+  display: none !important;
+}
+
+.custom-blob-marker {
+  overflow: visible !important;
+}
+
+/* Floating Bubbles (Glassmorphism) */
+.floating-bubbles {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.bubble {
+  position: absolute;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0.3) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+  color: #333;
+}
+
+.bubble .icon {
+  font-size: 16px;
+  margin-bottom: 2px;
+  background: #f5f7fa;
+  padding: 6px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bubble .value {
+  font-size: 26px;
+  font-weight: 800;
+  color: #111;
+  margin: 2px 0;
+}
+
+.bubble .value span {
+  font-size: 13px;
+  font-weight: 600;
+  color: #777;
+  margin-left: 2px;
+}
+
+.bubble .label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: #888;
+}
+
+/* Anchored Bubbles */
+.floating-bubbles-map-anchored {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* Positioning relative to the map coordinate (0,0) */
+.bubble-rain {
+  width: 140px;
+  height: 140px;
+  top: -240px;
+  left: -320px;
+}
+
+.bubble-temp {
+  width: 150px;
+  height: 150px;
+  top: 40px;
+  left: -200px;
+}
+
+.bubble-humidity {
+  width: 140px;
+  height: 140px;
+  top: -260px;
+  left: 120px;
+}
+
+.bubble-aqi {
+  width: 130px;
+  height: 130px;
+  top: 60px;
+  left: 280px;
+}
+
+/* Bottom Cards */
+.bottom-cards {
+  position: absolute;
+  bottom: 30px;
+  left: 30px;
+  right: 30px;
+  display: flex;
+  gap: 20px;
+  z-index: 20;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 1);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Beautiful soft blobs for the map background */
+
+
+.center-pin {
+  position: absolute;
+  top: -20px;
+  left: -20px;
+  width: 40px;
+  height: 40px;
+  background: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+  z-index: 10;
+}
+
+.center-pin span {
+  width: 14px;
+  height: 14px;
+  background: #4caf50;
+  border-radius: 50%;
+}
+
+
+.glass-card h3 {
+  margin: 0;
+  font-size: 15px;
+  color: #333;
+  font-weight: 600;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Pollution Card */
+.pollution-card {
+  flex: 2;
+}
+
+.pollution-card .tabs {
+  display: flex;
+  gap: 15px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+}
+
+.pollution-card .tabs span {
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.pollution-card .tabs span.active {
+  background: white;
+  color: #333;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+/* Airflow Card */
+.airflow-card {
+  flex: 1;
+  align-items: center;
+}
+
+/* Airflow Card Content */
+.airflow-content {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+  margin: 15px 0;
+  flex: 1;
+  gap: 16px;
+}
+
+.wind-speed-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.wind-speed-display .number {
+  font-size: 32px;
+  font-weight: 800;
+  color: #111;
+  line-height: 1;
+}
+
+.wind-speed-display .unit {
+  font-size: 11px;
+  color: #666;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* Compass Radar */
+.compass-radar {
+  position: relative;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(139,195,74,0.1) 0%, rgba(139,195,74,0.25) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.compass-center {
+  background: white;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.compass-center .icon {
+  font-size: 14px;
+}
+
+.compass-center .val {
+  font-size: 8px;
+  font-weight: 700;
+  color: #333;
+}
+
+.compass-radar .dir {
+  position: absolute;
+  font-size: 10px;
+  font-weight: 800;
+  color: #2e7d32;
+  background: white;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.compass-radar .dir.n { top: -6px; left: 50%; transform: translateX(-50%); }
+.compass-radar .dir.s { bottom: -6px; left: 50%; transform: translateX(-50%); }
+.compass-radar .dir.e { right: -6px; top: 50%; transform: translateY(-50%); }
+.compass-radar .dir.w { left: -6px; top: 50%; transform: translateY(-50%); }
+
+.compass-radar .dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: rgba(46, 125, 50, 0.4);
+  border-radius: 50%;
+}
+
+.compass-radar .dot.dot-ne { top: 12px; right: 12px; }
+.compass-radar .dot.dot-se { bottom: 12px; right: 12px; }
+.compass-radar .dot.dot-sw { bottom: 12px; left: 12px; }
+.compass-radar .dot.dot-nw { top: 12px; left: 12px; }
+
+.compass-radar .wind-pointer {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  border-radius: 50%;
+  z-index: 1;
+  transition: transform 1s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.compass-radar .wind-pointer::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0; 
+  height: 0; 
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 10px solid #ff5722;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+}
+
+.airflow-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(90deg, rgba(232,245,233,1) 0%, rgba(255,255,255,0) 100%);
+  padding: 8px 12px;
+  border-radius: 10px;
+  width: 100%;
+}
+
+.airflow-footer .leaf-icon {
+  font-size: 20px;
+}
+
+.airflow-footer div strong {
+  display: block;
+  font-size: 12px;
+  color: #2e7d32;
+}
+
+.airflow-footer div p {
+  margin: 0;
+  font-size: 10px;
+  color: #666;
+}
+
+/* Carbon Card */
+.carbon-card {
+  flex: 1.5;
+}
+
+.carbon-card .legend {
+  font-size: 11px;
+  color: #666;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.carbon-card .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.carbon-card .dot.current { background: #4caf50; }
+.carbon-card .dot.baseline { background: #ffc107; }
+
+.carbon-offset {
+  background: #111;
+  border-radius: 20px;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-top: auto;
+}
+
+.carbon-leaf {
+  font-size: 24px;
+}
+
+.carbon-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.carbon-info .label {
+  color: #aaa;
+  font-size: 11px;
+}
+
+.carbon-info .value {
+  color: #4caf50;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* Move Zoom Control to middle right */
+.leaflet-top.leaflet-right {
+  top: 50%;
+  transform: translateY(-50%);
+  margin-right: 15px;
+}
