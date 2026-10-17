@@ -43,6 +43,17 @@ const box = (sx, sy, sz, x, y, z, rz = 0) => {
 const pipeZ = (r, len, x, y, z, seg = 8) =>
   new THREE.CylinderGeometry(r, r, len, seg).rotateX(Math.PI / 2).translate(x, y, z);
 
+const pipeX = (r, len, x, y, z, seg = 8) =>
+  new THREE.CylinderGeometry(r, r, len, seg).rotateZ(Math.PI / 2).translate(x, y, z);
+const rod = (a, b, r = 0.012) => {
+  const A = new THREE.Vector3(...a);
+  const B = new THREE.Vector3(...b);
+  const mid = A.clone().add(B).multiplyScalar(0.5);
+  const g = new THREE.CylinderGeometry(r, r, A.distanceTo(B), 5);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize()));
+  return g.translate(mid.x, mid.y, mid.z);
+};
+
 const rng = (seed) => () => {
   seed = (seed + 0x6d2b79f5) | 0;
   let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
@@ -141,7 +152,102 @@ function buildGeometries() {
   });
 
   const m = mergeGeometries;
+
+  // --- iç/dış detaylar ---
+  const bars = [];
+  BAY_X.forEach((c) => {
+    for (let z = -6; z <= 6; z += 1) {
+      if (c === 0 && Math.abs(z) < 2) continue; // menfez kendi çerçevesini taşır
+      bars.push(box(SLOPE_LEN, 0.02, 0.03, c - BAY / 4, H + R / 2 + 0.065, z, SLOPE));
+      bars.push(box(SLOPE_LEN, 0.02, 0.03, c + BAY / 4, H + R / 2 + 0.065, z, -SLOPE));
+    }
+  });
+  [-4.8, 4.8].forEach((x) => {
+    for (let z = -5; z <= 5; z += 2) bars.push(box(0.03, H, 0.03, x, H / 2, z));
+    [1.0, 2.2].forEach((y) => bars.push(box(0.03, 0.03, 12, x, y, 0)));
+  });
+  [-6, 6].forEach((z) => {
+    for (let x = -4; x <= 4; x += 0.8) bars.push(box(0.03, H, 0.03, x, H / 2, z));
+    [1.0, 2.2].forEach((y) => bars.push(box(9.6, 0.03, 0.03, 0, y, z)));
+  });
+
+  const door = m([
+    box(0.06, 2.2, 0.06, -0.6, 1.1, 6.03), box(0.06, 2.2, 0.06, 0.6, 1.1, 6.03), box(1.26, 0.06, 0.06, 0, 2.2, 6.03),
+    box(1.14, 2.14, 0.03, 0, 1.07, 6.04), box(0.04, 0.16, 0.05, 0.45, 1.0, 6.08),
+  ]);
+
+  const downpipes = [];
+  [-4.95, 4.95].forEach((x) => [-6.08, 6.08].forEach((z) =>
+    downpipes.push(new THREE.CylinderGeometry(0.04, 0.04, H - 0.1, 8).translate(x, (H - 0.1) / 2 + 0.05, z))));
+
+  const braces = [];
+  [-4.75, 4.75].forEach((x) => [[-6, -4], [4, 6]].forEach(([z0, z1]) => {
+    braces.push(rod([x, 0.2, z0], [x, H - 0.2, z1]));
+    braces.push(rod([x, 0.2, z1], [x, H - 0.2, z0]));
+  }));
+
+  const wires = [];
+  const substrate = [];
+  ROWS.forEach((x) => {
+    wires.push(pipeZ(0.004, 11.6, x, 2.6, 0, 4));
+    for (let z = -5.4; z <= 5.41; z += 0.55) wires.push(rod([x, 2.6, z], [x + 0.03, 0.95, z], 0.003));
+    for (let i = 0; i < 10; i++) substrate.push(box(0.16, 0.075, 0.95, x, 0.94, -5.125 + i * 1.1));
+  });
+
+  const grate = [];
+  for (let z = -5.9; z <= 5.9; z += 0.4) grate.push(box(0.4, 0.01, 0.03, 0, 0.026, z));
+
+  const manifold = [pipeX(0.05, 9.4, 0, 0.5, -5.75)];
+  const valves = [];
+  ROWS.forEach((x) => {
+    manifold.push(new THREE.CylinderGeometry(0.02, 0.02, 0.5, 6).translate(x, 0.75, -5.75));
+    valves.push(box(0.09, 0.09, 0.09, x, 0.62, -5.75), new THREE.CylinderGeometry(0.035, 0.035, 0.02, 10).translate(x, 0.7, -5.75));
+  });
+
+  const cabinet = m([box(0.9, 1.9, 0.4, -4.2, 0.95, 5.6), box(0.03, 0.2, 0.03, -3.85, 1.0, 5.39)]);
+  const cabinetPanel = box(0.4, 0.25, 0.01, -4.2, 1.45, 5.395);
+  const pallet = [box(1.0, 0.12, 1.2, 3.6, 0.06, 5.2)];
+  const crates = [];
+  [0, 1].forEach((i) => [0, 1, 2].forEach((j) => crates.push(box(0.46, 0.28, 0.56, 3.38 + i * 0.48, 0.26 + j * 0.3, 5.2))));
+
+  const apron = box(12, 0.1, 16, 0, -0.08, 1);
+  const path = box(2.2, 0.06, 5, 0, -0.03, 8.6);
+  const boiler = m([box(3, 2.6, 3.6, 7.8, 1.3, -2.5), box(0.05, 2.0, 0.9, 6.28, 1.0, -2.5)]);
+  const boilerRoof = m([box(3.3, 0.15, 3.9, 7.8, 2.68, -2.5), new THREE.CylinderGeometry(0.18, 0.2, 2.2, 12).translate(8.6, 3.8, -3.4)]);
+  const hotPipe = pipeX(0.07, 1.4, 5.6, 0.6, -1.8);
+  const coldPipe = pipeX(0.07, 1.4, 5.6, 0.6, -2.2);
+  const waterTank = m([
+    new THREE.CylinderGeometry(1.0, 1.0, 2.2, 24).translate(-8.2, 1.1, -2.5),
+    new THREE.SphereGeometry(1.0, 24, 8, 0, Math.PI * 2, 0, Math.PI / 2).translate(-8.2, 2.2, -2.5),
+  ]);
+  const tankPipe = pipeX(0.06, 2.3, -6.05, 0.5, -2.5);
+  const co2Tank = m([
+    new THREE.CylinderGeometry(0.5, 0.5, 2.6, 16).rotateX(Math.PI / 2).translate(-8.2, 0.85, 2.5),
+    new THREE.SphereGeometry(0.5, 16, 8).translate(-8.2, 0.85, 3.8),
+    new THREE.SphereGeometry(0.5, 16, 8).translate(-8.2, 0.85, 1.2),
+    box(0.8, 0.25, 0.1, -8.2, 0.12, 1.8), box(0.8, 0.25, 0.1, -8.2, 0.12, 3.2),
+  ]);
+  const co2Pipe = pipeX(0.03, 2.3, -6.05, 0.6, 2.5);
+
+  const trunks = [];
+  const crowns = [];
+  [[-13, -6], [-12, 8], [13, 6], [12, -9], [-6, 12], [7, 12.5], [-14, 1], [14, -2]].forEach(([x, z], i) => {
+    const s = 0.85 + (i % 3) * 0.2;
+    trunks.push(new THREE.CylinderGeometry(0.15 * s, 0.22 * s, 1.5 * s, 7).translate(x, 0.75 * s, z));
+    crowns.push(new THREE.IcosahedronGeometry(1.2 * s, 1).translate(x, 2.3 * s, z));
+    crowns.push(new THREE.IcosahedronGeometry(0.85 * s, 1).translate(x + 0.4 * s, 3.1 * s, z - 0.2));
+  });
+  const hedge = box(10, 0.7, 0.6, 0, 0.35, -8.6);
+
+  const extra = {
+    glazingBars: m(bars), door, downpipes: m(downpipes), braces: m(braces), cropWires: m(wires),
+    substrate: m(substrate), drainGrate: m(grate), manifold: m(manifold), valves: m(valves),
+    cabinet, cabinetPanel, pallet: m(pallet), crates: m(crates), apron, path, boiler, boilerRoof,
+    hotPipe, coldPipe, waterTank, tankPipe, co2Tank, co2Pipe, trunks: m(trunks), crowns: m(crowns), hedge,
+  };
+
   return {
+    ...extra,
     columns: m(columns), trusses: m(trusses), roofGutters: m(roofGutters), foundation: m(foundation),
     weedBarrier, drain, glassWalls: m(glassWalls), glassRoof: m(glassRoof), gutters: m(gutters),
     lightHousing: m(lightHousing), lightLed: m(lightLed), heatPipes: m(heatPipes), drip: m(drip),
@@ -228,6 +334,17 @@ function buildMaterials() {
   const std = (color, metalness, roughness, extra = {}) => new THREE.MeshStandardMaterial({ color, metalness, roughness, ...extra });
   return {
     steel: std('#aab4be', 0.85, 0.35),
+    wire: std('#64748b', 0.5, 0.5),
+    blue: std('#2563eb', 0.1, 0.5),
+    hot: std('#b91c1c', 0.1, 0.5),
+    valve: std('#dc2626', 0.2, 0.5),
+    crate: std('#d97706', 0, 0.8),
+    wood: std('#a16207', 0, 0.9),
+    rockwool: std('#e7e5e4', 0, 1),
+    tank: std('#cbd5e1', 0.4, 0.4),
+    gravel: std('#b8b2a7', 0, 1),
+    trunk: std('#78350f', 0, 1),
+    foliage: std('#5c8a2e', 0, 1, { flatShading: true }),
     paint: std('#f8fafc', 0.1, 0.45),
     alu: std('#d6dbe0', 0.9, 0.3),
     concrete: std('#cfd4d9', 0, 0.9),
@@ -334,12 +451,28 @@ export default function GreenhouseScene({ state = {}, rotate = false, children }
         <Lightformer form="rect" intensity={1} position={[12, 4, 6]} rotation-y={-Math.PI / 2} scale={[24, 8, 1]} />
       </Environment>
 
+      <group name="Greenhouse_Root" ref={root} position={[0, 0, 0]}>
       <mesh rotation-x={-Math.PI / 2} position={[0, -0.13, 0]}>
         <circleGeometry args={[60, 48]} />
-        <meshStandardMaterial color="#d5dde6" roughness={1} />
+        <meshStandardMaterial color="#c5d6bb" roughness={1} />
       </mesh>
 
-      <group name="Greenhouse_Root" ref={root} position={[0, 0, 0]}>
+      <group name="Exterior">
+        <mesh name="Mesh_GravelApron" geometry={G.apron} material={M.gravel} />
+        <mesh name="Mesh_EntryPath" geometry={G.path} material={M.concrete} />
+        <mesh name="Mesh_BoilerHouse" geometry={G.boiler} material={M.concrete} />
+        <mesh name="Mesh_BoilerRoof" geometry={G.boilerRoof} material={M.housing} />
+        <mesh name="Mesh_HotSupplyPipe" geometry={G.hotPipe} material={M.hot} />
+        <mesh name="Mesh_ReturnPipe" geometry={G.coldPipe} material={M.blue} />
+        <mesh name="Mesh_WaterTank" geometry={G.waterTank} material={M.tank} />
+        <mesh name="Mesh_WaterPipe" geometry={G.tankPipe} material={M.blue} />
+        <mesh name="Mesh_CO2Tank" geometry={G.co2Tank} material={M.tank} />
+        <mesh name="Mesh_CO2Pipe" geometry={G.co2Pipe} material={M.steel} />
+        <mesh name="Mesh_Hedge" geometry={G.hedge} material={M.foliage} />
+        <mesh name="Mesh_TreeTrunks" geometry={G.trunks} material={M.trunk} />
+        <mesh name="Mesh_TreeCrowns" geometry={G.crowns} material={M.foliage} />
+      </group>
+
         <group name="Structure">
           <mesh name="Mesh_Columns" geometry={G.columns} material={M.steel} />
           <mesh name="Mesh_Trusses" geometry={G.trusses} material={M.paint} />
@@ -347,6 +480,11 @@ export default function GreenhouseScene({ state = {}, rotate = false, children }
           <mesh name="Mesh_Foundation" geometry={G.foundation} material={M.concrete} />
           <mesh name="Mesh_WeedBarrier" geometry={G.weedBarrier} material={M.barrier} />
           <mesh name="Mesh_DrainChannel" geometry={G.drain} material={M.drain} />
+          <mesh name="Mesh_DrainGrate" geometry={G.drainGrate} material={M.steel} />
+          <mesh name="Mesh_GlazingBars" geometry={G.glazingBars} material={M.alu} />
+          <mesh name="Mesh_Downpipes" geometry={G.downpipes} material={M.alu} />
+          <mesh name="Mesh_CrossBraces" geometry={G.braces} material={M.steel} />
+          <mesh name="Mesh_ServiceDoor" geometry={G.door} material={M.node} />
           <group name="Glass_Panels">
             <mesh name="Glass_Walls" geometry={G.glassWalls} material={M.glass} renderOrder={2} />
             <mesh name="Glass_Roof" geometry={G.glassRoof} material={M.glass} renderOrder={2} />
@@ -355,6 +493,8 @@ export default function GreenhouseScene({ state = {}, rotate = false, children }
 
         <group name="Vegetation">
           <mesh name="Mesh_Hydroponic_Gutters" geometry={G.gutters} material={M.plastic} />
+          <mesh name="Mesh_Substrate" geometry={G.substrate} material={M.rockwool} />
+          <mesh name="Mesh_CropWires" geometry={G.cropWires} material={M.wire} />
           <group name="Mesh_Crops_Foliage">
             <primitive object={foliage.stems} />
             <primitive object={foliage.leaves} />
@@ -406,6 +546,18 @@ export default function GreenhouseScene({ state = {}, rotate = false, children }
             <mesh name="Actuator_Fog_Nozzles" geometry={G.nozzles} material={M.brass} />
             <primitive object={mist.points} />
           </group>
+        </group>
+
+        <group name="Equipment">
+          <mesh name="Mesh_ControlCabinet" geometry={G.cabinet} material={M.node} />
+          <mesh name="Mesh_CabinetPanel" geometry={G.cabinetPanel} material={M.housing} />
+          {[-4.35, -4.2, -4.05].map((x) => (
+            <mesh key={x} position={[x, 1.2, 5.395]} material={M.nodeLed}><sphereGeometry args={[0.018, 8, 6]} /></mesh>
+          ))}
+          <mesh name="Mesh_IrrigationManifold" geometry={G.manifold} material={M.blue} />
+          <mesh name="Mesh_ManifoldValves" geometry={G.valves} material={M.valve} />
+          <mesh name="Mesh_Pallet" geometry={G.pallet} material={M.wood} />
+          <mesh name="Mesh_Crates" geometry={G.crates} material={M.crate} />
         </group>
 
         <group name="SensorNodes">
