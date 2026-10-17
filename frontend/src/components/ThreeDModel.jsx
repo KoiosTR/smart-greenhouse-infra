@@ -105,7 +105,7 @@ export default function ThreeDModel() {
       <div style={{flex: 1, width: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0}}>
         <ErrorBoundary>
           <Canvas 
-            camera={{ position: [17, 11, 21], fov: 35 }}
+            camera={{ position: [14, 9, 17], fov: 35 }}
             gl={{ powerPreference: 'default', antialias: true, failIfMajorPerformanceCaveat: false }}
             onCreated={({ gl }) => {
               gl.domElement.addEventListener('webglcontextlost', (e) => {
