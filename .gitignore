@@ -1,0 +1,66 @@
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-electron/
+dist/
+dist-electron/
+dist-ssr/
+*.local
+
+# Python / Backend
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing & Linting
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# Agent & IDE caches
+.claude/
+.cmem-projects/
+.windsurf/
+.vscode/
+agent-transcripts/
+scratch/
+browser/
+*.log
+logs/
+
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
