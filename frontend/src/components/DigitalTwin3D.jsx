@@ -1,6 +1,7 @@
 import React, { Suspense, useRef, useState } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { useGLTF, OrbitControls, Html, useProgress, Clone, Center } from '@react-three/drei';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls, Html } from '@react-three/drei';
+import GreenhouseScene from './GreenhouseScene';
 
 class DigitalTwinErrorBoundary extends React.Component {
   constructor(props) {
@@ -84,149 +85,72 @@ function Loader() {
   );
 }
 
-function GreenhouseModel({ isRotating, isGrowLightOn, isHeatingOn, isIrrigationOn, onToggleActuator }) {
-  const { scene } = useGLTF('/mangrove.glb');
-  const groupRef = useRef();
+const PIN_THEMES = {
+  light: { on: ['rgba(232, 121, 249, 0.95)', '#4a044e', '#c026d3', 'rgba(232, 121, 249, 0.8)'], icon: '💡' },
+  heat: { on: ['rgba(254, 215, 170, 0.95)', '#9a3412', '#ea580c', 'rgba(234, 88, 12, 0.6)'], icon: '🔥' },
+  water: { on: ['rgba(224, 242, 254, 0.95)', '#0369a1', '#0284c7', 'rgba(2, 132, 199, 0.5)'], icon: '💧' },
+};
 
-  useFrame((state, delta) => {
-    if (groupRef.current && isRotating) {
-      groupRef.current.rotation.y += delta * 0.35;
-    }
-  });
-
+function Pin({ position, theme, isOn, label, onLabel, title, onClick }) {
+  const [bg, fg, border, glow] = PIN_THEMES[theme].on;
   return (
-    <group ref={groupRef}>
-      {/* Center component mathematically normalizes model to [0,0,0] */}
-      <Center>
-        <Clone object={scene} />
-
-        {/* DYNAMIC SCADA LIGHTS IN 3D SPACE */}
-        {isGrowLightOn && (
-          <group position={[0, 2.5, 0]}>
-            <pointLight color="#f472b6" intensity={12} distance={12} decay={2} />
-            <pointLight color="#c084fc" intensity={8} distance={10} decay={2} position={[0, -0.6, 0]} />
-            <pointLight color="#fde047" intensity={5} distance={8} decay={2} position={[1.5, 0, 0]} />
-            <pointLight color="#fde047" intensity={5} distance={8} decay={2} position={[-1.5, 0, 0]} />
-          </group>
-        )}
-
-        {isHeatingOn && (
-          <group position={[0, -0.6, 0]}>
-            <pointLight color="#ea580c" intensity={8} distance={8} decay={2} />
-            <pointLight color="#f97316" intensity={5} distance={6} decay={2} position={[-1.5, 0, 0]} />
-            <pointLight color="#f97316" intensity={5} distance={6} decay={2} position={[1.5, 0, 0]} />
-          </group>
-        )}
-
-        {isIrrigationOn && (
-          <pointLight position={[0, 0.8, 0]} color="#0284c7" intensity={7} distance={8} decay={2} />
-        )}
-
-        {/* 3D INTERACTIVE HOTSPOT PINS ANCHORED OVER THE GREENHOUSE */}
-        <Html position={[0, 2.5, 0]} center distanceFactor={8}>
-          <div 
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleActuator('grow_light_main');
-            }}
-            style={{
-              background: isGrowLightOn ? 'rgba(232, 121, 249, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-              color: isGrowLightOn ? '#4a044e' : '#0f172a',
-              border: isGrowLightOn ? '2px solid #c026d3' : '2px solid #94a3b8',
-              padding: '4px 10px',
-              borderRadius: '9999px',
-              fontSize: '11px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              boxShadow: isGrowLightOn ? '0 0 16px rgba(232, 121, 249, 0.8)' : '0 2px 10px rgba(0,0,0,0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              whiteSpace: 'nowrap',
-              userSelect: 'none',
-              pointerEvents: 'auto'
-            }}
-            title="Tıklayarak Işıkları Aç/Kapat"
-          >
-            <span>💡</span>
-            <span>LED: {isGrowLightOn ? 'AÇIK (ON)' : 'KAPALI'}</span>
-          </div>
-        </Html>
-
-        <Html position={[-2.0, -0.2, 0.8]} center distanceFactor={8}>
-          <div 
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleActuator('heat1');
-            }}
-            style={{
-              background: isHeatingOn ? 'rgba(254, 215, 170, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-              color: isHeatingOn ? '#9a3412' : '#0f172a',
-              border: isHeatingOn ? '2px solid #ea580c' : '2px solid #94a3b8',
-              padding: '4px 10px',
-              borderRadius: '9999px',
-              fontSize: '11px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              boxShadow: isHeatingOn ? '0 0 16px rgba(234, 88, 12, 0.6)' : '0 2px 10px rgba(0,0,0,0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              whiteSpace: 'nowrap',
-              userSelect: 'none',
-              pointerEvents: 'auto'
-            }}
-            title="Tıklayarak Isıtıcıyı Aç/Kapat"
-          >
-            <span>🔥</span>
-            <span>ISITICI: {isHeatingOn ? 'DEVREDE' : 'KAPALI'}</span>
-          </div>
-        </Html>
-
-        <Html position={[2.0, 0.2, 0.8]} center distanceFactor={8}>
-          <div 
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleActuator('irrigation');
-            }}
-            style={{
-              background: isIrrigationOn ? 'rgba(224, 242, 254, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-              color: isIrrigationOn ? '#0369a1' : '#0f172a',
-              border: isIrrigationOn ? '2px solid #0284c7' : '2px solid #94a3b8',
-              padding: '4px 10px',
-              borderRadius: '9999px',
-              fontSize: '11px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              boxShadow: isIrrigationOn ? '0 0 16px rgba(2, 132, 199, 0.5)' : '0 2px 10px rgba(0,0,0,0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              whiteSpace: 'nowrap',
-              userSelect: 'none',
-              pointerEvents: 'auto'
-            }}
-            title="Tıklayarak Sulamayı Aç/Kapat"
-          >
-            <span>💧</span>
-            <span>SULAMA: {isIrrigationOn ? 'AKTİF' : 'KAPALI'}</span>
-          </div>
-        </Html>
-      </Center>
-    </group>
+    <Html position={position} center distanceFactor={14}>
+      <div
+        onClick={(e) => { e.stopPropagation(); onClick(); }}
+        style={{
+          background: isOn ? bg : 'rgba(255, 255, 255, 0.95)',
+          color: isOn ? fg : '#0f172a',
+          border: isOn ? `2px solid ${border}` : '2px solid #94a3b8',
+          padding: '4px 10px',
+          borderRadius: '9999px',
+          fontSize: '11px',
+          fontWeight: 800,
+          cursor: 'pointer',
+          boxShadow: isOn ? `0 0 16px ${glow}` : '0 2px 10px rgba(0,0,0,0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '5px',
+          whiteSpace: 'nowrap',
+          userSelect: 'none',
+          pointerEvents: 'auto'
+        }}
+        title={title}
+      >
+        <span>{PIN_THEMES[theme].icon}</span>
+        <span>{label}: {isOn ? onLabel : 'KAPALI'}</span>
+      </div>
+    </Html>
   );
 }
 
-useGLTF.preload('/mangrove.glb');
+function GreenhouseModel({ isRotating, state, onToggleActuator }) {
+  return (
+    <GreenhouseScene state={state} rotate={isRotating}>
+      <Pin position={[0, 4.9, 0]} theme="light" isOn={state.growLight} label="LED" onLabel="AÇIK (ON)"
+        title="Tıklayarak Işıkları Aç/Kapat" onClick={() => onToggleActuator('grow_light_main')} />
+      <Pin position={[5.2, 0.5, 0]} theme="heat" isOn={state.heating} label="ISITICI" onLabel="DEVREDE"
+        title="Tıklayarak Isıtıcıyı Aç/Kapat" onClick={() => onToggleActuator('heat1')} />
+      <Pin position={[-5.2, 1.4, 0]} theme="water" isOn={state.irrigation} label="SULAMA" onLabel="AKTİF"
+        title="Tıklayarak Sulamayı Aç/Kapat" onClick={() => onToggleActuator('irrigation')} />
+    </GreenhouseScene>
+  );
+}
 
 export default function DigitalTwin3D({ actuators = [], onToggleActuator, controlMode }) {
   const [isRotating, setIsRotating] = useState(false);
   const controlsRef = useRef();
 
   // Determine active states
-  const isGrowLightOn = actuators.some(a => a.id.includes('grow_light') && (a.status === 'RUNNING' || a.status === 'ACTIVE'));
-  const isHeatingOn = actuators.some(a => (a.id === 'heat1' || a.id === 'heat2') && (a.status === 'RUNNING' || a.status === 'ACTIVE'));
-  const isIrrigationOn = actuators.some(a => a.id.includes('irrigation') && (a.status === 'RUNNING' || a.status === 'ACTIVE'));
+  const isOn = (match) => actuators.some(a => match(a.id) && ['RUNNING', 'ACTIVE', 'OPEN'].includes(a.status));
+  const state = {
+    growLight: isOn(id => id.includes('grow_light')),
+    heating: isOn(id => id === 'heat1' || id === 'heat2'),
+    irrigation: isOn(id => id.includes('irrigation')),
+    vent: isOn(id => id === 'vent'),
+    fans: isOn(id => id.startsWith('fan')),
+    fogging: isOn(id => id === 'fog'),
+  };
+  const isGrowLightOn = state.growLight;
 
   const handleActuatorToggle = (id) => {
     const act = actuators.find(a => a.id === id || a.id.includes(id));
@@ -354,7 +278,7 @@ export default function DigitalTwin3D({ actuators = [], onToggleActuator, contro
 
         {/* 3D CANVAS WITH BULLETPROOF OFFLINE LIGHTING AND CENTERED MODEL */}
         <Canvas 
-          camera={{ position: [6, 4.5, 7.5], fov: 38 }}
+          camera={{ position: [12, 8, 15], fov: 38 }}
           gl={{ powerPreference: 'default', antialias: true, failIfMajorPerformanceCaveat: false }}
           onCreated={({ gl }) => {
             gl.domElement.addEventListener('webglcontextlost', (e) => {
@@ -369,21 +293,15 @@ export default function DigitalTwin3D({ actuators = [], onToggleActuator, contro
             makeDefault
             enableZoom={true} 
             maxPolarAngle={Math.PI / 2.05} 
-            minDistance={4} 
-            maxDistance={20} 
-            target={[0, 0, 0]}
+            minDistance={6}
+            maxDistance={40}
+            target={[0, 1.8, 0]}
           />
 
-          <ambientLight intensity={0.7} />
-          <directionalLight position={[8, 12, 8]} intensity={1.1} />
-          <directionalLight position={[-8, 6, -6]} intensity={0.5} />
-
           <Suspense fallback={<Loader />}>
-            <GreenhouseModel 
+            <GreenhouseModel
               isRotating={isRotating}
-              isGrowLightOn={isGrowLightOn}
-              isHeatingOn={isHeatingOn}
-              isIrrigationOn={isIrrigationOn}
+              state={state}
               onToggleActuator={handleActuatorToggle}
             />
           </Suspense>
@@ -416,62 +334,34 @@ export default function DigitalTwin3D({ actuators = [], onToggleActuator, contro
           }}>
             <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', marginLeft: '6px' }}>Hızlı Tetik:</span>
             
-            <button
-              onClick={() => handleActuatorToggle('grow_light_main')}
-              style={{
-                background: isGrowLightOn ? '#fdf4ff' : '#f8fafc',
-                color: isGrowLightOn ? '#c026d3' : '#475569',
-                border: isGrowLightOn ? '1px solid #f0abfc' : '1px solid #cbd5e1',
-                padding: '4px 12px',
-                borderRadius: '9999px',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px'
-              }}
-            >
-              <span>💡</span> Işıklar {isGrowLightOn ? 'Açık' : 'Kapalı'}
-            </button>
-
-            <button
-              onClick={() => handleActuatorToggle('heat1')}
-              style={{
-                background: isHeatingOn ? '#fff7ed' : '#f8fafc',
-                color: isHeatingOn ? '#ea580c' : '#475569',
-                border: isHeatingOn ? '1px solid #fed7aa' : '1px solid #cbd5e1',
-                padding: '4px 12px',
-                borderRadius: '9999px',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px'
-              }}
-            >
-              <span>🔥</span> Isıtıcı {isHeatingOn ? 'Devrede' : 'Kapalı'}
-            </button>
-
-            <button
-              onClick={() => handleActuatorToggle('irrigation')}
-              style={{
-                background: isIrrigationOn ? '#f0f9ff' : '#f8fafc',
-                color: isIrrigationOn ? '#0284c7' : '#475569',
-                border: isIrrigationOn ? '1px solid #bae6fd' : '1px solid #cbd5e1',
-                padding: '4px 12px',
-                borderRadius: '9999px',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px'
-              }}
-            >
-              <span>💧</span> Sulama {isIrrigationOn ? 'Aktif' : 'Kapalı'}
-            </button>
+            {[
+              { id: 'grow_light_main', on: state.growLight, icon: '💡', name: 'Işıklar', onTxt: 'Açık', offTxt: 'Kapalı', bg: '#fdf4ff', fg: '#c026d3', bd: '#f0abfc' },
+              { id: 'heat1', on: state.heating, icon: '🔥', name: 'Isıtıcı', onTxt: 'Devrede', offTxt: 'Kapalı', bg: '#fff7ed', fg: '#ea580c', bd: '#fed7aa' },
+              { id: 'irrigation', on: state.irrigation, icon: '💧', name: 'Sulama', onTxt: 'Aktif', offTxt: 'Kapalı', bg: '#f0f9ff', fg: '#0284c7', bd: '#bae6fd' },
+              { id: 'vent', on: state.vent, icon: '🪟', name: 'Menfez', onTxt: 'Açık', offTxt: 'Kapalı', bg: '#f0fdf4', fg: '#16a34a', bd: '#bbf7d0' },
+              { id: 'fan1', on: state.fans, icon: '🌀', name: 'Fan', onTxt: 'Çalışıyor', offTxt: 'Beklemede', bg: '#f0fdfa', fg: '#0d9488', bd: '#99f6e4' },
+              { id: 'fog', on: state.fogging, icon: '☁️', name: 'Sisleme', onTxt: 'Aktif', offTxt: 'Beklemede', bg: '#f8fafc', fg: '#0369a1', bd: '#cbd5e1' },
+            ].map((b) => (
+              <button
+                key={b.id}
+                onClick={() => handleActuatorToggle(b.id)}
+                style={{
+                  background: b.on ? b.bg : '#f8fafc',
+                  color: b.on ? b.fg : '#475569',
+                  border: `1px solid ${b.on ? b.bd : '#cbd5e1'}`,
+                  padding: '4px 12px',
+                  borderRadius: '9999px',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}
+              >
+                <span>{b.icon}</span> {b.name} {b.on ? b.onTxt : b.offTxt}
+              </button>
+            ))}
           </div>
 
           <div style={{

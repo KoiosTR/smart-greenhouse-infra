@@ -1,6 +1,10 @@
-import React, { Suspense, useRef, useState } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { useGLTF, Html, Clone, Center } from '@react-three/drei';
+import React, { Suspense, useState } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { Html, OrbitControls } from '@react-three/drei';
+import GreenhouseScene from './GreenhouseScene';
+
+// Overview'da canlı aktüatör verisi yok; sakin bir vitrin durumu gösterilir.
+const SHOWCASE_STATE = { fans: true, vent: true };
 
 function Loader() {
   return (
@@ -20,27 +24,6 @@ function Loader() {
     </Html>
   );
 }
-
-function GreenhouseModel({ isRotating }) {
-  const { scene } = useGLTF('/mangrove.glb');
-  const groupRef = useRef();
-
-  useFrame((state, delta) => {
-    if (groupRef.current && isRotating) {
-      groupRef.current.rotation.y += delta * 0.4;
-    }
-  });
-
-  return (
-    <group ref={groupRef}>
-      <Center>
-        <Clone object={scene} />
-      </Center>
-    </group>
-  );
-}
-
-useGLTF.preload('/mangrove.glb');
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -122,7 +105,7 @@ export default function ThreeDModel() {
       <div style={{flex: 1, width: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0}}>
         <ErrorBoundary>
           <Canvas 
-            camera={{ position: [5, 4, 8], fov: 35 }}
+            camera={{ position: [14, 9, 17], fov: 35 }}
             gl={{ powerPreference: 'default', antialias: true, failIfMajorPerformanceCaveat: false }}
             onCreated={({ gl }) => {
               gl.domElement.addEventListener('webglcontextlost', (e) => {
@@ -132,12 +115,10 @@ export default function ThreeDModel() {
           >
             <color attach="background" args={['#e2e8f0']} />
             
-            <ambientLight intensity={0.75} />
-            <directionalLight position={[8, 12, 8]} intensity={1.1} />
-            <directionalLight position={[-8, 6, -6]} intensity={0.4} />
+            <OrbitControls makeDefault enablePan={false} target={[0, 1.8, 0]} minDistance={8} maxDistance={40} maxPolarAngle={Math.PI / 2.05} />
 
             <Suspense fallback={<Loader />}>
-              <GreenhouseModel isRotating={isRotating} />
+              <GreenhouseScene state={SHOWCASE_STATE} rotate={isRotating} />
             </Suspense>
           </Canvas>
         </ErrorBoundary>
