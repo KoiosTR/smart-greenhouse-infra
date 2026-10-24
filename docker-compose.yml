@@ -10,7 +10,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: greenhouse_api
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: sh -c "pip install -q --no-cache-dir Pillow python-multipart && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     environment:
       - DB_URL=${SUPABASE_DB_URL}
       - SUPABASE_DB_URL=${SUPABASE_DB_URL}
