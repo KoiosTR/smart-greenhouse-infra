@@ -1,6 +1,7 @@
-import React, { Suspense, useRef, useState } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { useGLTF, Html, Clone, Center } from '@react-three/drei';
+import React, { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { Html, OrbitControls } from '@react-three/drei';
+import GreenhouseModel from './GreenhouseModel';
 
 function Loader() {
   return (
@@ -20,27 +21,6 @@ function Loader() {
     </Html>
   );
 }
-
-function GreenhouseModel({ isRotating }) {
-  const { scene } = useGLTF('/mangrove.glb');
-  const groupRef = useRef();
-
-  useFrame((state, delta) => {
-    if (groupRef.current && isRotating) {
-      groupRef.current.rotation.y += delta * 0.4;
-    }
-  });
-
-  return (
-    <group ref={groupRef}>
-      <Center>
-        <Clone object={scene} />
-      </Center>
-    </group>
-  );
-}
-
-useGLTF.preload('/mangrove.glb');
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -95,11 +75,36 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+// Gölge kamerası sınırları R3F'de otomatik güncellenmediği için elle ayarlanır.
+function Sun() {
+  const ref = useRef();
+  useLayoutEffect(() => {
+    const c = ref.current.shadow.camera;
+    Object.assign(c, { left: -12, right: 12, top: 12, bottom: -12, near: 1, far: 50 });
+    c.updateProjectionMatrix();
+  }, []);
+  return (
+    <directionalLight
+      ref={ref} position={[-7, 12, -3]} color="#fff0d8" intensity={3} castShadow
+      shadow-mapSize={[2048, 2048]} shadow-bias={-0.0004} shadow-normalBias={0.03} shadow-radius={4} shadow-blurSamples={16}
+    />
+  );
+}
+
 export default function ThreeDModel() {
   const [isRotating, setIsRotating] = useState(true);
+  // Gerçek veri: Grafana `energy` tablosundaki en son şebeke gücü (W, negatif = şebekeye verilen)
+  const [powerW, setPowerW] = useState(null);
+  useEffect(() => {
+    const load = () => fetch(`http://localhost:8000/api/energy/day?date=${new Date().toISOString().split('T')[0]}`)
+      .then(r => r.json()).then(j => setPowerW(j.data?.current_power_w ?? null)).catch(() => setPowerW(null));
+    load();
+    const id = setInterval(load, 60000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
-    <div className="center-col" style={{position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', background: '#e2e8f0', overflow: 'hidden', borderRadius: '20px'}}>
+    <div className="center-col" style={{position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', background: 'radial-gradient(ellipse at 50% 30%, #f1f6fc 0%, #d5e3f1 55%, #b3c7dc 100%)', overflow: 'hidden', borderRadius: '20px'}}>
       
       {/* Play/Pause Button */}
       <button 
@@ -122,32 +127,46 @@ export default function ThreeDModel() {
       <div style={{flex: 1, width: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0}}>
         <ErrorBoundary>
           <Canvas 
-            camera={{ position: [5, 4, 8], fov: 35 }}
-            gl={{ powerPreference: 'default', antialias: true, failIfMajorPerformanceCaveat: false }}
+            shadows="variance"
+            orthographic
+            camera={{ position: [12, 8, 11], zoom: 44, near: -60, far: 120 }}
+            gl={{ powerPreference: 'default', antialias: true, alpha: true, failIfMajorPerformanceCaveat: false }}
             onCreated={({ gl }) => {
+              gl.toneMappingExposure = 0.95;
               gl.domElement.addEventListener('webglcontextlost', (e) => {
                 e.preventDefault();
               }, false);
             }}
           >
-            <color attach="background" args={['#e2e8f0']} />
             
-            <ambientLight intensity={0.75} />
-            <directionalLight position={[8, 12, 8]} intensity={1.1} />
-            <directionalLight position={[-8, 6, -6]} intensity={0.4} />
+            <hemisphereLight args={["#bcd6ff", "#5f6b45", 0.38]} />
+            <Sun />
+            <directionalLight position={[-4, 5, 10]} color="#a8c8ff" intensity={0.5} />
+            <directionalLight position={[9, 6, 8]} color="#ffe2c4" intensity={1.1} />
+
+            <OrbitControls
+              makeDefault
+              enablePan={false}
+              target={[0, 1.4, 0]}
+              minZoom={24}
+              maxZoom={90}
+              maxPolarAngle={Math.PI / 2.1}
+              autoRotate={isRotating}
+              autoRotateSpeed={1.2}
+            />
 
             <Suspense fallback={<Loader />}>
-              <GreenhouseModel isRotating={isRotating} />
+              <GreenhouseModel />
             </Suspense>
           </Canvas>
         </ErrorBoundary>
       </div>
       
-      <div className="overlay-info" style={{zIndex: 1, pointerEvents: 'none', position: 'absolute', bottom: 0, width: '100%', background: 'linear-gradient(to top, rgba(226, 232, 240, 1), transparent)'}}>
+      <div className="overlay-info" style={{zIndex: 1, pointerEvents: 'none', position: 'absolute', bottom: 0, width: '100%', background: 'linear-gradient(to top, #b3c7dc, transparent)'}}>
         <div>
           <h2>Greenhouse A1</h2>
           <p style={{color: 'var(--text-muted)', fontSize: '0.9rem'}}>Plant Zone</p>
-          
+
           <div style={{display: 'flex', gap: '24px', marginTop: '16px', fontSize: '0.85rem'}}>
             <div>
               <div style={{color: 'var(--text-muted)'}}>Sector ID</div>
@@ -163,10 +182,10 @@ export default function ThreeDModel() {
             </div>
           </div>
         </div>
-        
+
         <div style={{textAlign: 'right'}}>
-          <div style={{fontSize: '2rem', fontWeight: '700'}}>2.74 <span style={{fontSize: '1rem', color: 'var(--text-muted)'}}>kW</span></div>
-          <div style={{color: 'var(--text-muted)', fontSize: '0.85rem'}}>Current Production</div>
+          <div style={{fontSize: '2rem', fontWeight: '700'}}>{powerW == null ? '--' : (Math.abs(powerW) / 1000).toFixed(2)} <span style={{fontSize: '1rem', color: 'var(--text-muted)'}}>kW</span></div>
+          <div style={{color: 'var(--text-muted)', fontSize: '0.85rem'}}>{powerW == null ? 'Net grid power' : powerW < 0 ? 'Exporting to grid' : 'Importing from grid'}</div>
         </div>
       </div>
     </div>

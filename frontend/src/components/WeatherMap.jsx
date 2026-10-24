@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, ZoomControl, Polygon, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { motion } from 'motion/react';
+import { cardIn, CountUp, Reveal } from '../motionKit';
 import 'leaflet/dist/leaflet.css';
 import './WeatherMap.css';
 
@@ -20,39 +22,23 @@ export default function WeatherMap({ sensorData }) {
     return null;
   };
   
-  // Dummy data for the charts to mimic the design
-  const pollutionDataRealTime = [
-    { time: '06:00', value: 30 }, { time: '08:00', value: 45 }, 
-    { time: '10:00', value: 35 }, { time: '12:00', value: 50 }, 
-    { time: '14:00', value: 42 }, { time: '16:00', value: 38 },
-    { time: '18:00', value: 30 }, { time: '20:00', value: 25 }
-  ];
+  // Gerçek veri: Grafana (dış ortam güneş radyasyonu ve iç ortam çiğ noktası)
+  const RANGE = { 'REAL TIME': 'day', WEEKLY: 'week', MONTHLY: 'month' };
+  const [solarTrend, setSolarTrend] = useState([]);
+  const [dewTrend, setDewTrend] = useState([]);
 
-  const pollutionDataWeekly = [
-    { time: 'Mon', value: 45 }, { time: 'Tue', value: 52 }, 
-    { time: 'Wed', value: 38 }, { time: 'Thu', value: 65 }, 
-    { time: 'Fri', value: 48 }, { time: 'Sat', value: 35 },
-    { time: 'Sun', value: 40 }
-  ];
+  useEffect(() => {
+    fetch(`http://localhost:8000/api/weather/solar-trend?range=${RANGE[pollutionTab]}`)
+      .then(r => r.json()).then(j => setSolarTrend(j.data || [])).catch(() => setSolarTrend([]));
+  }, [pollutionTab]);
 
-  const pollutionDataMonthly = [
-    { time: 'Week 1', value: 42 }, { time: 'Week 2', value: 50 }, 
-    { time: 'Week 3', value: 39 }, { time: 'Week 4', value: 46 }
-  ];
+  useEffect(() => {
+    fetch('http://localhost:8000/api/weather/dew-trend')
+      .then(r => r.json()).then(j => setDewTrend(j.data || [])).catch(() => setDewTrend([]));
+  }, []);
 
-  const activePollutionData = pollutionTab === 'REAL TIME' 
-    ? pollutionDataRealTime 
-    : pollutionTab === 'WEEKLY' 
-      ? pollutionDataWeekly 
-      : pollutionDataMonthly;
-
-  const carbonData = [
-    { name: 'Jan', current: 110, baseline: 100 },
-    { name: 'Feb', current: 120, baseline: 100 },
-    { name: 'Mar', current: 80, baseline: 100 },
-    { name: 'Apr', current: 150, baseline: 100 },
-    { name: 'May', current: 110, baseline: 100 }
-  ];
+  const activePollutionData = solarTrend;
+  const carbonData = dewTrend;
 
   useEffect(() => {
     const fetchWeather = async () => {
@@ -82,61 +68,27 @@ export default function WeatherMap({ sensorData }) {
   // Use solar irradiance instead of PM2.5 since we have outdoor solar data
   const solar = weatherData?.solar_irradiance_w_m2 != null ? weatherData.solar_irradiance_w_m2.toFixed(0) : '--';
   
-  // CO2 is empty in the DB, so we calculate Dew Point (Çiğ Noktası) instead for the cards
-  const indoorTempC = sensorData?.temperature != null ? (sensorData.temperature - 32) * 5/9 : null;
-  const indoorHum = sensorData?.humidity;
-  const dewPoint = (indoorTempC != null && indoorHum != null) ? (indoorTempC - ((100 - indoorHum) / 5)).toFixed(1) : '--';
+  const dewPoint = sensorData?.dew_point != null ? ((sensorData.dew_point - 32) * 5/9).toFixed(1) : '--';
   const windDir = weatherData?.wind_direction_deg || 0;
   const windSpeedNum = weatherData?.wind_speed_kmh || 0;
 
-  // Function to deform a perfect circle into an egg/teardrop shape based on wind direction
+  // Yumuşak, organik leke: yalnızca düşük dereceli harmonikler (sivri uç yok) + rüzgar yönünde hafif uzama
   const generateDeformedBlob = (centerLat, centerLng, baseRadiusMeters, layerIndex = 1) => {
     const points = [];
-    // We force a strong minimum wind effect (e.g. 25 km/h) so the skew is ALWAYS visible
-    const effectiveWindSpeed = Math.max(windSpeedNum, 25);
-    
-    // Convert meteorological wind direction to mathematical radians
-    const mathAngleFrom = (270 - windDir) % 360; 
-    const mathAngleTo = (mathAngleFrom + 180) % 360;
-    const blowToRad = mathAngleTo * (Math.PI / 180);
-    
-    // Aggressive stretch factors
-    const stretchFactor = Math.min(effectiveWindSpeed / 20, 2.0); // Up to 200% stretch
-    const squashFactor = 0.5; // Squash the tail by 50%
-    
-    // Approximate conversions for Colorado latitude
+    const blowToRad = ((270 - windDir + 180) % 360) * (Math.PI / 180); // rüzgarın estiği yön
+    const stretch = Math.min(windSpeedNum / 40, 0.5); // rüzgar yoksa dairesel kalır
     const metersPerLat = 111320;
     const metersPerLng = 40075000 * Math.cos(centerLat * Math.PI / 180) / 360;
+    const ph = layerIndex * 1.3; // katman başına farklı faz: iç içe ama birbirinin kopyası değil
 
-    for (let i = 0; i <= 360; i += 5) {
-        const rad = i * (Math.PI / 180);
-        
-        // Alignment: 1 = pointing exactly downwind, -1 = pointing exactly upwind
-        const alignment = Math.cos(rad - blowToRad);
-        
-        let r = baseRadiusMeters;
-        if (alignment > 0) {
-            // Stretch forward significantly (use power to make it more teardrop/pointy)
-            r += baseRadiusMeters * stretchFactor * Math.pow(alignment, 1.2); 
-        } else {
-            // Squash the back
-            r += baseRadiusMeters * squashFactor * alignment; 
-        }
-        
-        // Add multiple sine waves for a truly amorphous (blob-like) organic shape
-        // We use layerIndex to alter the phase and frequency of the waves so each layer is unique!
-        const amorphousWobble = (0.10 + (layerIndex * 0.05)) * Math.sin((rad - blowToRad) * (2 + layerIndex)) 
-                              + 0.10 * Math.cos(rad * (3 + layerIndex))
-                              + 0.08 * Math.sin(rad * (5 - layerIndex + (layerIndex*0.5)));
-        r += baseRadiusMeters * amorphousWobble;
-        
-        const dx = r * Math.cos(rad); // East
-        const dy = r * Math.sin(rad); // North
-        
-        points.push([
-            centerLat + (dy / metersPerLat),
-            centerLng + (dx / metersPerLng)
-        ]);
+    for (let i = 0; i < 360; i += 3) {
+      const a = i * (Math.PI / 180);
+      const w = a - blowToRad;
+      const r = baseRadiusMeters * (1
+        + stretch * Math.cos(w) // rüzgar yönünde uzar, ters yönde daralır
+        + 0.16 * Math.cos(2 * (a + ph))
+        + 0.10 * Math.sin(3 * a + ph * 2));
+      points.push([centerLat + (r * Math.sin(a)) / metersPerLat, centerLng + (r * Math.cos(a)) / metersPerLng]);
     }
     return points;
   };
@@ -197,9 +149,9 @@ export default function WeatherMap({ sensorData }) {
         />
 
         {/* Heatmap Blobs using dynamic Polygons that deform based on Wind Direction! */}
-        <Polygon positions={generateDeformedBlob(centerPos[0], centerPos[1], 15000, 1)} pathOptions={{ color: 'transparent', fillColor: '#8bc34a', fillOpacity: 0.2 }} />
-        <Polygon positions={generateDeformedBlob(centerPos[0], centerPos[1], 9000, 2)} pathOptions={{ color: 'transparent', fillColor: '#ffeb3b', fillOpacity: 0.3 }} />
-        <Polygon positions={generateDeformedBlob(centerPos[0], centerPos[1], 5000, 3)} pathOptions={{ color: 'transparent', fillColor: '#ff5722', fillOpacity: 0.4 }} />
+        <Polygon positions={generateDeformedBlob(centerPos[0], centerPos[1], 17000, 1)} pathOptions={{ stroke: false, className: 'blob-soft', fillColor: '#8bc34a', fillOpacity: 0.28, interactive: false }} />
+        <Polygon positions={generateDeformedBlob(centerPos[0], centerPos[1], 10500, 2)} pathOptions={{ stroke: false, className: 'blob-soft', fillColor: '#fcd34d', fillOpacity: 0.42, interactive: false }} />
+        <Polygon positions={generateDeformedBlob(centerPos[0], centerPos[1], 5800, 3)} pathOptions={{ stroke: false, className: 'blob-soft', fillColor: '#f97316', fillOpacity: 0.5, interactive: false }} />
 
         <MapEvents />
 
@@ -211,9 +163,9 @@ export default function WeatherMap({ sensorData }) {
       {/* Bottom Cards */}
       <div className="bottom-cards">
         
-        <div className="glass-card pollution-card">
+        <motion.div className="glass-card pollution-card" {...cardIn(0)}>
           <div className="card-header">
-            <h3>Pollution Trend Analysis</h3>
+            <h3>Solar Radiation Trend (W/m²){pollutionTab === 'REAL TIME' ? '' : ' · daily peak'}</h3>
             <div className="tabs">
               <span className={pollutionTab === 'REAL TIME' ? 'active' : ''} onClick={() => setPollutionTab('REAL TIME')}>REAL TIME</span>
               <span className={pollutionTab === 'WEEKLY' ? 'active' : ''} onClick={() => setPollutionTab('WEEKLY')}>WEEKLY</span>
@@ -221,6 +173,7 @@ export default function WeatherMap({ sensorData }) {
             </div>
           </div>
           <div className="chart-container" style={{height: '110px', marginTop: '10px'}}>
+            <Reveal k={pollutionTab + activePollutionData.length}>
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={activePollutionData}>
                 <defs>
@@ -232,17 +185,18 @@ export default function WeatherMap({ sensorData }) {
                 <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{fill: '#888', fontSize: 12}} />
                 <YAxis hide domain={['dataMin - 10', 'dataMax + 10']} />
                 <RechartsTooltip />
-                <Area type="monotone" dataKey="value" stroke="#f5b041" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+                <Area isAnimationActive={false} type="monotone" dataKey="value" stroke="#f5b041" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
               </AreaChart>
             </ResponsiveContainer>
+            </Reveal>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="glass-card airflow-card">
+        <motion.div className="glass-card airflow-card" {...cardIn(1)}>
           <h3>Air Flow Status</h3>
           <div className="airflow-content">
             <div className="wind-speed-display">
-              <span className="number">{windSpeed}</span>
+              <span className="number"><CountUp value={windSpeed} /></span>
               <span className="unit">km/hours</span>
             </div>
             
@@ -260,43 +214,45 @@ export default function WeatherMap({ sensorData }) {
               <span className="dot dot-sw"></span>
               <span className="dot dot-nw"></span>
               
-              <div className="wind-pointer" style={{ transform: `rotate(${windDir}deg)` }}></div>
+              <motion.div className="wind-pointer" animate={{ rotate: windDir }} transition={{ type: 'spring', stiffness: 60, damping: 14 }} />
             </div>
           </div>
           <div className="airflow-footer">
             <span className="leaf-icon">🍃</span>
             <div>
-              <strong>Fresh Air Movement!</strong>
-              <p>Wind circulation is helping reduce pollutant</p>
+              <strong>{weatherData?.wind_speed_kmh == null ? 'No Wind Data' : windSpeedNum >= 5 ? 'Air Movement Detected' : 'Calm Air'}</strong>
+              <p>{weatherData?.wind_speed_kmh == null ? 'Wind is not published by the data source' : windSpeedNum >= 5 ? `Outdoor wind at ${windSpeed} km/h` : 'Little outdoor air movement right now'}</p>
             </div>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="glass-card carbon-card">
+        <motion.div className="glass-card carbon-card" {...cardIn(2)}>
           <div className="card-header">
-            <h3>Dew Point Analysis</h3>
+            <h3>Dew Point Analysis · Outdoor</h3>
             <div className="legend">
-              <span className="dot current"></span> Current
-              <span className="dot baseline"></span> Target
+              <span className="dot current"></span> Dew point
+              <span className="dot baseline"></span> Air temp
             </div>
           </div>
           <div className="chart-container" style={{height: '70px', marginBottom: '8px'}}>
+            <Reveal k={carbonData.length}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={carbonData}>
                 <YAxis hide domain={['auto', 'auto']} />
-                <Line type="monotone" dataKey="current" stroke="#4caf50" strokeWidth={3} dot={false} />
-                <Line type="monotone" dataKey="baseline" stroke="#3b82f6" strokeWidth={3} dot={false} />
+                <Line isAnimationActive={false} type="monotone" dataKey="current" stroke="#4caf50" strokeWidth={3} dot={false} />
+                <Line isAnimationActive={false} type="monotone" dataKey="baseline" stroke="#3b82f6" strokeWidth={3} dot={false} />
               </LineChart>
             </ResponsiveContainer>
+            </Reveal>
           </div>
           <div className="carbon-offset">
             <div className="carbon-leaf">💧</div>
             <div className="carbon-info">
               <span className="label">Condensation Risk (Dew Point)</span>
-              <span className="value">{dewPoint} °C</span>
+              <span className="value"><CountUp value={dewPoint} /> °C</span>
             </div>
           </div>
-        </div>
+        </motion.div>
 
       </div>
     </div>

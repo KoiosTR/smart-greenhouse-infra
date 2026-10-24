@@ -1,32 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import DigitalTwin3D from './DigitalTwin3D';
+import MonitoringCharts from './MonitoringCharts';
+import LiveCameras from './LiveCameras';
+import { Spark, RuntimeBar, VpdBullet } from './MonitoringViz';
 
 export default function Monitoring() {
   const [scadaData, setScadaData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date().toLocaleTimeString());
   const [filterCategory, setFilterCategory] = useState('all');
+  const [kpi, setKpi] = useState([]); // Grafana: son 24 saatlik saatlik seriler (KPI kart grafikleri)
+  useEffect(() => {
+    fetch('http://localhost:8000/api/monitoring/kpi').then(r => r.json()).then(j => setKpi(j.data || [])).catch(() => setKpi([]));
+  }, []);
+  const lastKpi = [...kpi].reverse().find(d => d.temp != null) || {};
+  const tempDelta = lastKpi.temp != null && lastKpi.target != null ? lastKpi.temp - lastKpi.target : null;
+  const dewMargin = lastKpi.temp != null && lastKpi.dew != null ? lastKpi.temp - lastKpi.dew : null; // hava sıcaklığı - çiy noktası
 
-  // INTERACTIVE STATES
-  const [controlMode, setControlMode] = useState('auto'); // 'auto' (PID) or 'manual' (Override)
-  const [actuatorOverrides, setActuatorOverrides] = useState({});
-  const [selectedZoneId, setSelectedZoneId] = useState('center');
-  const [customZoneTargets, setCustomZoneTargets] = useState({
-    east: 1.01,
-    west: 0.85,
-    north: 0.88,
-    center: 1.00
-  });
   const [activeModalActuator, setActiveModalActuator] = useState(null);
-  const [toastMessage, setToastMessage] = useState(null);
-  const [extraLogs, setExtraLogs] = useState([]);
-
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 4000);
-  };
 
   const fetchScada = async () => {
     try {
@@ -49,80 +39,17 @@ export default function Monitoring() {
     return () => clearInterval(interval);
   }, []);
 
-  const facility = scadaData?.facility || {
-    co2_ppm: 3053,
-    dew_point_c: 13.8,
-    solar_irradiance_w_m2: 118,
-    pressure_hpa: 853.7,
-    temp_target_c: 22.7,
-    soil_temp_c: 18.8,
-    water_total_gal: 723
-  };
+  const facility = scadaData?.facility || {};
 
   const rawActuators = scadaData?.actuators || [];
   const zones = scadaData?.zones || [];
   const baseLogs = scadaData?.logs || [];
-  const allLogs = [...extraLogs, ...baseLogs];
-
-  // Merge server actuators with manual overrides if in manual mode
-  const actuators = rawActuators.map(act => {
-    if (actuatorOverrides[act.id] !== undefined) {
-      const isManualOn = actuatorOverrides[act.id];
-      return {
-        ...act,
-        status: isManualOn ? 'RUNNING' : 'IDLE',
-        isOverridden: true
-      };
-    }
-    return act;
-  });
+  const allLogs = baseLogs;
+  const actuators = rawActuators;
 
   const filteredActuators = filterCategory === 'all' 
     ? actuators 
     : actuators.filter(a => a.category === filterCategory);
-
-  const handleToggleActuator = (act) => {
-    if (controlMode === 'auto') {
-      setControlMode('manual');
-    }
-
-    const currentStatus = act.status === 'RUNNING' || act.status === 'ACTIVE' || act.status === 'OPEN';
-    const nextStatus = !currentStatus;
-
-    setActuatorOverrides(prev => ({
-      ...prev,
-      [act.id]: nextStatus
-    }));
-
-    const actionText = nextStatus ? 'AÇILDI (ON)' : 'KAPATILDI (OFF)';
-    const newLog = {
-      time: new Date().toLocaleTimeString(),
-      type: 'MANUAL_OVERRIDE',
-      message: `[Kullanıcı Müdahalesi] ${act.name} manuel olarak ${actionText}. MQTT Topic: actuators/${act.id}/set -> ${nextStatus ? 1 : 0}`,
-      severity: nextStatus ? 'success' : 'info'
-    };
-
-    setExtraLogs(prev => [newLog, ...prev]);
-    showToast(`⚙️ ${act.name} ${actionText} — Manuel moda geçildi.`);
-  };
-
-  const handleSimulateEmergencyTest = () => {
-    const testLog = {
-      time: new Date().toLocaleTimeString(),
-      type: 'SAFETY_INTERLOCK',
-      message: '⚡ Emniyet Prosedürü Testi: Yüksek VPD kompanzasyonu tetiklendi. Çatı menfezleri kapandı, sisleme hazırlandı.',
-      severity: 'success'
-    };
-    setExtraLogs(prev => [testLog, ...prev]);
-    showToast("⚡ SCADA Güvenlik Kilidi Testi başarıyla simüle edildi!");
-  };
-
-  const handleZoneSliderChange = (zoneId, newTarget) => {
-    setCustomZoneTargets(prev => ({
-      ...prev,
-      [zoneId]: parseFloat(newTarget)
-    }));
-  };
 
   const getStatusBadge = (status, isRunning) => {
     switch (status) {
@@ -184,42 +111,10 @@ export default function Monitoring() {
     }
   };
 
-  const selectedZone = zones.find(z => z.id === selectedZoneId) || zones[0];
-  const activeZoneTarget = selectedZone ? (customZoneTargets[selectedZone.id] ?? selectedZone.vpd_target ?? 1.0) : 1.0;
-
   return (
-    <main style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', paddingRight: '4px', position: 'relative' }}>
+    <main style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '28px', overflowY: 'auto', paddingRight: '4px', position: 'relative' }}>
       
-      {/* FLOATING ACTION TOAST */}
-      {toastMessage && (
-        <div style={{
-          position: 'fixed',
-          top: '24px',
-          right: '32px',
-          zIndex: 9999,
-          background: '#0f172a',
-          color: '#ffffff',
-          padding: '12px 20px',
-          borderRadius: '12px',
-          boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
-          fontSize: '0.85rem',
-          fontWeight: 600,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          animation: 'slideIn 0.3s ease-out'
-        }}>
-          <span>{toastMessage}</span>
-          <button 
-            onClick={() => setToastMessage(null)}
-            style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '1rem', marginLeft: '6px' }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* HEADER PANEL WITH INTERACTIVE CONTROLS */}
+      {/* HEADER PANEL */}
       <div className="panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -250,69 +145,6 @@ export default function Monitoring() {
         {/* TOP INTERACTIVE ACTION BUTTONS */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           
-          {/* Mode Switcher: Auto PID vs Manual Override */}
-          <div style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '9999px', border: '1px solid #e2e8f0' }}>
-            <button
-              onClick={() => {
-                setControlMode('auto');
-                setActuatorOverrides({});
-                showToast("🤖 Otomatik SCADA (PID) Moduna dönüldü.");
-              }}
-              style={{
-                background: controlMode === 'auto' ? '#0f172a' : 'transparent',
-                color: controlMode === 'auto' ? '#ffffff' : '#64748b',
-                border: 'none',
-                padding: '6px 14px',
-                borderRadius: '9999px',
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              Otomatik (PID)
-            </button>
-            <button
-              onClick={() => {
-                setControlMode('manual');
-                showToast("⚠️ Manuel Müdahale Modu devrede! Donanım anahtarlarıyla doğrudan kontrol edebilirsiniz.");
-              }}
-              style={{
-                background: controlMode === 'manual' ? '#f59e0b' : 'transparent',
-                color: controlMode === 'manual' ? '#0f172a' : '#64748b',
-                border: 'none',
-                padding: '6px 14px',
-                borderRadius: '9999px',
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              Manuel Müdahale
-            </button>
-          </div>
-
-          <button 
-            onClick={handleSimulateEmergencyTest}
-            style={{
-              background: '#f8fafc',
-              color: '#0f172a',
-              border: '1px solid #cbd5e1',
-              padding: '8px 14px',
-              borderRadius: '9999px',
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 2px 5px rgba(0,0,0,0.02)'
-            }}
-          >
-            <span>⚡</span> Test Tetikle
-          </button>
-
           <button 
             onClick={fetchScada}
             style={{
@@ -332,28 +164,22 @@ export default function Monitoring() {
         </div>
       </div>
 
-      {/* INTERACTIVE 3D DIGITAL TWIN (HERO DISPLAY AT TOP OF MONITORING) */}
-      <DigitalTwin3D 
-        actuators={actuators}
-        onToggleActuator={handleToggleActuator}
-        controlMode={controlMode}
-      />
-
       {/* TOP 4 KEY FACILITY PARAMETERS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
         
         <div className="panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px', border: '1px solid #f1f5f9' }}>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Karbondioksit (CO2)
+            Ortalama VPD
           </span>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
             <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0284c7' }}>
-              {facility.co2_ppm?.toLocaleString()}
+              {facility.vpd_kpa ?? '--'}
             </span>
-            <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 500 }}>ppm</span>
+            <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 500 }}>kPa</span>
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#059669', background: '#ecfdf5', padding: '3px 8px', borderRadius: '6px', alignSelf: 'flex-start', fontWeight: 600 }}>
-            ● Zenginleştirilmiş Fotosentez
+          <Spark data={kpi} k="vpd" color="#0284c7" gid="kpiVpd" />
+          <div className={`mv-chip ${facility.vpd_kpa == null ? '' : facility.vpd_kpa >= 0.8 && facility.vpd_kpa <= 1.2 ? 'ok' : 'warn'}`}>
+            {facility.vpd_kpa == null ? '--' : facility.vpd_kpa < 0.8 ? 'Düşük VPD · nemli ortam' : facility.vpd_kpa <= 1.2 ? 'Hedef bandında (0,8–1,2)' : 'Yüksek VPD · kuru ortam'}
           </div>
         </div>
 
@@ -363,12 +189,13 @@ export default function Monitoring() {
           </span>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
             <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#059669' }}>
-              {facility.temp_target_c}
+              {facility.temp_target_c ?? '--'}
             </span>
             <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 500 }}>°C</span>
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#64748b', background: '#f8fafc', padding: '3px 8px', borderRadius: '6px', alignSelf: 'flex-start', fontWeight: 500 }}>
-            Otomatik PID Isıtma Kontrolü
+          <Spark data={kpi} k="temp" color="#059669" k2="target" color2="#94a3b8" gid="kpiTemp" />
+          <div className={`mv-chip ${tempDelta == null ? '' : Math.abs(tempDelta) < 1 ? 'ok' : 'warn'}`}>
+            {tempDelta == null ? '--' : `Gerçek ${lastKpi.temp} °C · fark ${tempDelta > 0 ? '+' : ''}${tempDelta.toFixed(1)} °C`}
           </div>
         </div>
 
@@ -378,12 +205,13 @@ export default function Monitoring() {
           </span>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
             <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#d97706' }}>
-              {facility.dew_point_c}
+              {facility.dew_point_c ?? '--'}
             </span>
             <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 500 }}>°C</span>
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#059669', background: '#ecfdf5', padding: '3px 8px', borderRadius: '6px', alignSelf: 'flex-start', fontWeight: 600 }}>
-            Kondensasyon Riski: Düşük
+          <Spark data={kpi} k="dew" color="#d97706" k2="temp" color2="#94a3b8" gid="kpiDew" />
+          <div className={`mv-chip ${dewMargin == null ? '' : dewMargin < 2 ? 'bad' : dewMargin < 4 ? 'warn' : 'ok'}`}>
+            {dewMargin == null ? '--' : `Kondensasyon Riski: ${dewMargin < 2 ? 'Yüksek' : dewMargin < 4 ? 'Orta' : 'Düşük'} · marj ${dewMargin.toFixed(1)} °C`}
           </div>
         </div>
 
@@ -393,16 +221,17 @@ export default function Monitoring() {
           </span>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
             <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0f172a' }}>
-              {facility.solar_irradiance_w_m2}
+              {facility.solar_irradiance_w_m2 ?? '--'}
             </span>
             <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 500 }}>W/m²</span>
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#64748b', background: '#f8fafc', padding: '3px 8px', borderRadius: '6px', alignSelf: 'flex-start', fontWeight: 500 }}>
-            Barometre: {facility.pressure_hpa} hPa
-          </div>
+          <Spark data={kpi} k="solar" color="#f59e0b" gid="kpiSolar" />
+          <div className="mv-chip">Dış ortam ölçümü</div>
         </div>
 
       </div>
+
+      <LiveCameras />
 
       {/* MAIN TWO-COLUMN LAYOUT: ACTUATORS (LEFT) & MULTI-ZONE (RIGHT) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.8fr) minmax(360px, 1.2fr)', gap: '20px' }}>
@@ -416,16 +245,9 @@ export default function Monitoring() {
                 <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>
                   Aktüatör & Saha Ekipman Durumları
                 </h3>
-                {controlMode === 'manual' && (
-                  <span style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fcd34d', fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
-                    MANUEL MOD AKTİF (Tıkla & Değiştir)
-                  </span>
-                )}
               </div>
               <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                {controlMode === 'auto' 
-                  ? 'PID döngüsü tarafından otomatik yönetilen saha donanımları.' 
-                  : 'Kartların üzerindeki anahtarlara tıklayarak donanımları anlık olarak açıp kapatabilirsiniz.'}
+                Verdify verisinden izlenen saha donanımları. Durum son arşiv saatine göre, süreler son 24 saat toplamıdır (gecikmeli).
               </p>
             </div>
 
@@ -503,33 +325,6 @@ export default function Monitoring() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         {getStatusBadge(act.status, isRunning)}
                         
-                        {/* iOS-Style Interactive Toggle Switch */}
-                        <div 
-                          onClick={() => handleToggleActuator(act)}
-                          title={controlMode === 'auto' ? "Açıp/Kapatmak için önce Manuel Modu seçin" : "Durumu değiştir"}
-                          style={{
-                            width: '42px',
-                            height: '24px',
-                            background: isRunning ? '#10b981' : '#cbd5e1',
-                            borderRadius: '9999px',
-                            position: 'relative',
-                            cursor: controlMode === 'manual' ? 'pointer' : 'not-allowed',
-                            opacity: controlMode === 'manual' ? 1 : 0.6,
-                            transition: 'background 0.3s ease'
-                          }}
-                        >
-                          <div style={{
-                            width: '18px',
-                            height: '18px',
-                            background: '#ffffff',
-                            borderRadius: '50%',
-                            position: 'absolute',
-                            top: '3px',
-                            left: isRunning ? '21px' : '3px',
-                            transition: 'left 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                            boxShadow: '0 1px 4px rgba(0,0,0,0.2)'
-                          }} />
-                        </div>
                       </div>
                     </div>
 
@@ -547,10 +342,10 @@ export default function Monitoring() {
                     paddingTop: '10px',
                     color: 'var(--text-muted)'
                   }}>
-                    <span>Günlük Çalışma Süresi:</span>
+                    <span>Son 24 saat çalışma:</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <strong style={{ color: isRunning ? '#059669' : '#0f172a', fontWeight: 700 }}>
-                        {act.runtime_min > 0 ? `${act.runtime_min} dk (${(act.runtime_min / 60).toFixed(1)} sa)` : '0 dk'}
+                        {act.runtime_min == null ? '--' : `${act.runtime_min} dk (${(act.runtime_min / 60).toFixed(1)} sa)`}
                       </strong>
                       <button
                         onClick={() => setActiveModalActuator(act)}
@@ -569,6 +364,7 @@ export default function Monitoring() {
                       </button>
                     </div>
                   </div>
+                  <RuntimeBar minutes={act.runtime_min} running={isRunning} />
                 </div>
               );
             })}
@@ -584,31 +380,28 @@ export default function Monitoring() {
                 Bölgesel İklim Matrisi
               </h3>
               <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Detay ve hedef ayarı için herhangi bir bölgeye tıklayın
+                Bölge bazlı sıcaklık, nem ve VPD (hedefle karşılaştırmalı)
               </p>
             </div>
 
             {/* Zone Cards with Click Selection */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {zones.map((zone) => {
-                const isSelected = selectedZoneId === zone.id;
                 const temp = zone.temperature_c ?? '--';
                 const hum = zone.humidity_pct ?? '--';
                 const vpd = zone.vpd_kpa ?? '--';
-                const target = customZoneTargets[zone.id] ?? zone.vpd_target ?? 1.0;
-                const vpdDiff = vpd !== '--' ? (vpd - target).toFixed(2) : '0';
+                const target = zone.vpd_target;
+                const vpdDiff = (vpd !== '--' && target != null) ? (vpd - target).toFixed(2) : null;
 
                 return (
                   <div 
                     key={zone.id}
-                    onClick={() => setSelectedZoneId(zone.id)}
                     style={{
                       background: '#ffffff',
-                      border: isSelected ? '2px solid #3b82f6' : '1px solid #e2e8f0',
+                      border: '1px solid #e2e8f0',
                       borderRadius: '16px',
                       padding: '16px 18px',
-                      boxShadow: isSelected ? '0 4px 16px rgba(59, 130, 246, 0.12)' : '0 2px 8px rgba(0, 0, 0, 0.02)',
-                      cursor: 'pointer',
+                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.02)',
                       transition: 'all 0.2s ease',
                       position: 'relative'
                     }}
@@ -619,9 +412,9 @@ export default function Monitoring() {
                           width: '8px', 
                           height: '8px', 
                           borderRadius: '50%', 
-                          background: isSelected ? '#3b82f6' : '#cbd5e1' 
+                          background: '#cbd5e1' 
                         }} />
-                        <strong style={{ fontSize: '0.95rem', color: isSelected ? '#1d4ed8' : '#0f172a', fontWeight: 700 }}>
+                        <strong style={{ fontSize: '0.95rem', color: '#0f172a', fontWeight: 700 }}>
                           {zone.name}
                         </strong>
                       </div>
@@ -634,7 +427,7 @@ export default function Monitoring() {
                         borderRadius: '9999px',
                         fontWeight: 700 
                       }}>
-                        {isSelected ? 'Seçili Bölge' : 'Nominal'}
+                        {vpdDiff == null ? '--' : Math.abs(parseFloat(vpdDiff)) < 0.2 ? 'Hedefte' : 'Sapma var'}
                       </span>
                     </div>
 
@@ -653,48 +446,16 @@ export default function Monitoring() {
                       </div>
                     </div>
 
+                    <VpdBullet value={typeof vpd === 'number' ? vpd : null} target={target ?? null} />
+
                     <div style={{ marginTop: '10px', fontSize: '0.75rem', color: '#64748b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>Hedef: <strong style={{ color: '#0f172a' }}>{target} kPa</strong></span>
-                      <span>Sapma: <strong style={{ color: Math.abs(parseFloat(vpdDiff)) < 0.2 ? '#059669' : '#d97706' }}>{vpdDiff > 0 ? `+${vpdDiff}` : vpdDiff} kPa</strong></span>
+                      <span>Hedef: <strong style={{ color: '#0f172a' }}>{target ?? '--'} kPa</strong></span>
+                      <span>Sapma: <strong style={{ color: Math.abs(parseFloat(vpdDiff)) < 0.2 ? '#059669' : '#d97706' }}>{vpdDiff == null ? '--' : vpdDiff > 0 ? `+${vpdDiff}` : vpdDiff} kPa</strong></span>
                     </div>
                   </div>
                 );
               })}
             </div>
-
-            {/* INTERACTIVE ZONE TARGET SLIDER CARD */}
-            {selectedZone && (
-              <div style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '16px',
-                padding: '16px',
-                marginTop: '4px'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0f172a' }}>
-                    🎛️ {selectedZone.name} — Hedef VPD Sürgüsü
-                  </span>
-                  <strong style={{ color: '#0284c7', fontSize: '0.95rem' }}>{activeZoneTarget} kPa</strong>
-                </div>
-
-                <input 
-                  type="range"
-                  min="0.5"
-                  max="1.6"
-                  step="0.05"
-                  value={activeZoneTarget}
-                  onChange={(e) => handleZoneSliderChange(selectedZone.id, e.target.value)}
-                  style={{ width: '100%', accentColor: '#0284c7', cursor: 'pointer' }}
-                />
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                  <span>0.5 kPa (Nemli/Düşük Buharlaşma)</span>
-                  <span>1.0 kPa (İdeal)</span>
-                  <span>1.6 kPa (Kuru)</span>
-                </div>
-              </div>
-            )}
 
           </div>
 
@@ -702,15 +463,17 @@ export default function Monitoring() {
 
       </div>
 
+      <MonitoringCharts />
+
       {/* BOTTOM PANEL: SCADA EVENT & CONTROL AUDIT LOG */}
       <div className="panel" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>
-              Saha SCADA Otomasyon ve Müdahale Günlüğü
+              Saha SCADA Olay Günlüğü
             </h3>
             <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Tetiklenen aktüatör döngüleri, manuel müdahaleler ve güvenlik kilitleri (Interlocks)
+              Aktüatör açma/kapama olayları (Grafana equipment_state)
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -742,7 +505,6 @@ export default function Monitoring() {
                 borderRadius: '10px',
                 border: '1px solid #f1f5f9',
                 borderLeft: `4px solid ${
-                  log.type === 'MANUAL_OVERRIDE' ? '#f59e0b' : 
                   log.type === 'SAFETY_INTERLOCK' ? '#ef4444' : 
                   log.severity === 'success' ? '#10b981' : '#3b82f6'
                 }`
@@ -752,8 +514,8 @@ export default function Monitoring() {
                 {log.time}
               </span>
               <span style={{ 
-                background: log.type === 'MANUAL_OVERRIDE' ? '#f59e0b' : '#0f172a', 
-                color: log.type === 'MANUAL_OVERRIDE' ? '#000000' : '#ffffff', 
+                background: '#0f172a', 
+                color: '#ffffff', 
                 padding: '2px 8px', 
                 borderRadius: '6px', 
                 fontSize: '0.7rem',
@@ -813,45 +575,19 @@ export default function Monitoring() {
                 </div>
               </div>
               <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Günlük Çalışma</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Son 24 Saat Çalışma</div>
                 <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-                  {activeModalActuator.runtime_min} dk
-                </div>
-              </div>
-              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Donanım Sağlığı</div>
-                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#059669', marginTop: '4px' }}>
-                  %98.4 (Nominal)
+                  {activeModalActuator.runtime_min ?? '--'} dk
                 </div>
               </div>
               <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Protokol / Veri Yolu</div>
                 <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0284c7', marginTop: '4px' }}>
-                  MQTT / Modbus-RTU
+                  Verdify Grafana (HTTP)
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                onClick={() => {
-                  handleToggleActuator(activeModalActuator);
-                  setActiveModalActuator(null);
-                }}
-                style={{
-                  background: '#0f172a',
-                  color: 'white',
-                  border: 'none',
-                  padding: '10px 18px',
-                  borderRadius: '10px',
-                  fontWeight: 600,
-                  fontSize: '0.85rem',
-                  cursor: 'pointer'
-                }}
-              >
-                Durumu Tersine Çevir (Toggle)
-              </button>
-            </div>
           </div>
         </div>
       )}

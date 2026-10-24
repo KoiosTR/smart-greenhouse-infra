@@ -1,0 +1,82 @@
+.mc-wrap { display: flex; flex-direction: column; gap: 24px; padding: 8px 0 16px; }
+
+.mc-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.mc-head h3 { margin: 0; font-size: 1.35rem; font-weight: 800; color: #0f172a; letter-spacing: -0.01em; }
+.mc-head p { margin: 4px 0 0; font-size: 0.85rem; color: #64748b; }
+
+.mc-seg { display: inline-flex; background: #f1f5f9; border-radius: 999px; padding: 4px; gap: 2px; }
+.mc-seg button { border: 0; background: transparent; color: #64748b; font: inherit; font-size: 0.82rem; font-weight: 600; padding: 7px 16px; border-radius: 999px; cursor: pointer; transition: background .25s ease, color .25s ease, box-shadow .25s ease; }
+.mc-seg button:hover { color: #0f172a; }
+.mc-seg button.on { background: #fff; color: #0f172a; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08); }
+
+.mc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+.mc-wide { grid-column: 1 / -1; }
+
+.mc-card { background: #fff; border-radius: 24px; padding: 28px; box-shadow: 0 4px 24px rgba(15, 23, 42, 0.05); border: 1px solid #f1f5f9; display: flex; flex-direction: column; gap: 20px; }
+.mc-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.mc-card-head h4 { margin: 0; font-size: 1.05rem; font-weight: 700; color: #0f172a; }
+.mc-card-head p { margin: 4px 0 0; font-size: 0.8rem; color: #94a3b8; }
+
+.mc-chart { height: 280px; }
+
+.mc-legend { display: flex; gap: 14px; font-size: 0.75rem; color: #64748b; font-weight: 600; }
+.mc-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.mc-legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+.mc-tip { background: rgba(15, 23, 42, 0.92); color: #f8fafc; padding: 10px 14px; border-radius: 12px; font-size: 0.8rem; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); min-width: 130px; }
+.mc-tip-title { font-weight: 700; margin-bottom: 6px; color: #fff; }
+.mc-tip-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.mc-tip-row strong { margin-left: auto; padding-left: 14px; }
+.mc-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+/* Isı haritası */
+.mc-heat { display: flex; flex-direction: column; gap: 4px; overflow-x: auto; padding-bottom: 4px; }
+.mc-heat-hours, .mc-heat-row { display: grid; grid-template-columns: 52px repeat(24, minmax(18px, 1fr)); gap: 4px; align-items: center; }
+.mc-heat-hours span { font-size: 0.7rem; color: #94a3b8; text-align: center; }
+.mc-heat-day { font-size: 0.75rem; color: #64748b; font-weight: 600; }
+.mc-cell { display: block; height: 22px; border-radius: 6px; background: #f1f5f9; transition: transform .15s ease, box-shadow .15s ease; }
+.mc-cell:hover { transform: scale(1.25); box-shadow: 0 4px 12px rgba(15, 23, 42, 0.25); position: relative; z-index: 2; }
+
+.mc-scale { display: flex; align-items: center; gap: 8px; font-size: 0.72rem; color: #64748b; font-weight: 600; }
+.mc-scale i { width: 140px; height: 10px; border-radius: 999px; background: linear-gradient(90deg, rgb(59,130,246), rgb(16,185,129) 29%, rgb(251,191,36) 57%, rgb(239,68,68)); }
+
+.mc-state { padding: 40px; text-align: center; color: #94a3b8; font-size: 0.9rem; background: #fff; border-radius: 24px; }
+
+@media (max-width: 1100px) { .mc-grid { grid-template-columns: 1fr; } }
+
+/* Monitoring kartlarındaki küçük görseller (MonitoringViz.jsx) */
+.mv-spark { height: 54px; margin: 2px -4px 0; }
+.mv-empty { display: flex; align-items: center; justify-content: center; font-size: 0.72rem; color: #cbd5e1; }
+.mv-chip { font-size: 0.75rem; padding: 3px 10px; border-radius: 999px; align-self: flex-start; font-weight: 600; background: #f1f5f9; color: #64748b; }
+.mv-chip.ok { background: #ecfdf5; color: #059669; }
+.mv-chip.warn { background: #fffbeb; color: #b45309; }
+.mv-chip.bad { background: #fef2f2; color: #dc2626; }
+
+.mv-run { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.mv-run-track { flex: 1; height: 6px; border-radius: 999px; background: #f1f5f9; overflow: hidden; }
+.mv-run-fill { height: 100%; border-radius: 999px; background: #cbd5e1; }
+.mv-run-fill.on { background: linear-gradient(90deg, #34d399, #10b981); }
+.mv-run span { font-size: 0.72rem; font-weight: 700; color: #64748b; min-width: 34px; text-align: right; }
+
+.mv-bullet { margin-top: 12px; }
+.mv-bullet-track { position: relative; height: 10px; border-radius: 999px; background: #f1f5f9; }
+.mv-band { position: absolute; top: 0; bottom: 0; background: rgba(16, 185, 129, 0.22); border-radius: 999px; }
+.mv-target { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #0f172a; transform: translateX(-1px); border-radius: 2px; }
+.mv-dot { position: absolute; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: #10b981; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.25); }
+.mv-dot.off { background: #f59e0b; }
+.mv-bullet-scale { position: relative; height: 14px; font-size: 0.65rem; color: #94a3b8; margin-top: 6px; }
+.mv-bullet-scale span { position: absolute; transform: translateX(-50%); }
+.mv-bullet-scale span:first-child { transform: none; }
+.mv-bullet-scale span:last-child { transform: translateX(-100%); }
+
+/* Canlı kameralar (LiveCameras.jsx) */
+.mc-cams { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+.mc-cam { background: #fff; border-radius: 24px; padding: 14px; box-shadow: 0 4px 24px rgba(15, 23, 42, 0.05); border: 1px solid #f1f5f9; display: flex; flex-direction: column; gap: 12px; }
+.mc-cam-frame { position: relative; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: #0f172a; }
+.mc-cam-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mc-cam-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 0.9rem; }
+.mc-cam-badge { position: absolute; top: 12px; left: 12px; background: rgba(15, 23, 42, 0.65); color: #34d399; backdrop-filter: blur(6px); font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+.mc-cam-badge.off { color: #f87171; }
+.mc-cam-foot { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 0 6px 4px; font-size: 0.8rem; color: #94a3b8; }
+.mc-cam-foot strong { color: #0f172a; font-size: 0.95rem; }
+@media (max-width: 1100px) { .mc-cams { grid-template-columns: 1fr; } }

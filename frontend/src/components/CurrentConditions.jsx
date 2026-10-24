@@ -1,4 +1,5 @@
 import React from 'react';
+import { CountUp } from '../motionKit';
 
 export default function CurrentConditions({ sensorData, selectedDate }) {
   const isToday = !selectedDate || selectedDate === new Date().toISOString().split('T')[0];
@@ -7,17 +8,15 @@ export default function CurrentConditions({ sensorData, selectedDate }) {
   const vpd = (sensorData && sensorData.vpd !== null) ? sensorData.vpd.toFixed(2) : '--';
   const humidity = (sensorData && sensorData.humidity !== null) ? sensorData.humidity.toFixed(0) : '--';
   
-  // CO2 is empty in the current DB, so we replace it with Dew Point (Çiğ Noktası)
-  const dewPoint = (tempC !== '--' && humidity !== '--') 
-    ? (parseFloat(tempC) - ((100 - parseFloat(humidity)) / 5)).toFixed(1) 
-    : '--';
+  // Grafana'daki ölçülen çiğ noktası (°F -> °C)
+  const dewPoint = (sensorData && sensorData.dew_point != null) ? ((sensorData.dew_point - 32) * 5/9).toFixed(1) : '--';
 
   return (
     <div className="panel" style={{position: 'relative'}}>
       <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'}}>
         <div>
           <h3 style={{marginBottom: '4px'}}>{isToday ? 'Current Conditions' : 'Historical Conditions'}</h3>
-          <p style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>Historical DB Data</p>
+          <p style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>Verdify Grafana · canlı</p>
         </div>
         <button style={{background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b'}}>
           <span style={{color: sensorData ? 'var(--success)' : '#ccc'}}>●</span>
@@ -27,19 +26,19 @@ export default function CurrentConditions({ sensorData, selectedDate }) {
       <div className="conditions-grid" style={{marginTop: '20px'}}>
         <div className="condition-card">
           <span className="condition-label">Temperature</span>
-          <span className="condition-value">{tempC}<span style={{fontSize:'1rem', color:'var(--text-muted)', marginLeft:'4px'}}>°C</span></span>
+          <span className="condition-value"><CountUp value={tempC} decimals={1} /><span style={{fontSize:'1rem', color:'var(--text-muted)', marginLeft:'4px'}}>°C</span></span>
         </div>
         <div className="condition-card">
           <span className="condition-label">VPD</span>
-          <span className="condition-value">{vpd}<span style={{fontSize:'1rem', color:'var(--text-muted)', marginLeft:'4px'}}>kPa</span></span>
+          <span className="condition-value"><CountUp value={vpd} decimals={2} /><span style={{fontSize:'1rem', color:'var(--text-muted)', marginLeft:'4px'}}>kPa</span></span>
         </div>
         <div className="condition-card">
           <span className="condition-label">Humidity</span>
-          <span className="condition-value">{humidity}<span style={{fontSize:'1rem', color:'var(--text-muted)', marginLeft:'4px'}}>%</span></span>
+          <span className="condition-value"><CountUp value={humidity} decimals={0} /><span style={{fontSize:'1rem', color:'var(--text-muted)', marginLeft:'4px'}}>%</span></span>
         </div>
         <div className="condition-card">
           <span className="condition-label">Dew Point</span>
-          <span className="condition-value">{dewPoint}<span style={{fontSize:'1rem', color:'var(--text-muted)', marginLeft:'4px'}}>°C</span></span>
+          <span className="condition-value"><CountUp value={dewPoint} decimals={1} /><span style={{fontSize:'1rem', color:'var(--text-muted)', marginLeft:'4px'}}>°C</span></span>
         </div>
       </div>
       

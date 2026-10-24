@@ -161,7 +161,7 @@ export default function Analytics({ trainingUpdate }) {
       ) : data.length === 0 ? (
         // --- NO DATA ---
         <div className="panel glass-panel" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
-          No historical data available yet. Waiting for Kafka stream to push data...
+          No historical data available yet.
         </div>
       ) : (
         // --- HISTORICAL DATA DASHBOARD ---

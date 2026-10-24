@@ -1,4 +1,6 @@
 import { app, BrowserWindow } from 'electron';
+import { execFile, spawn } from 'child_process';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -14,6 +16,17 @@ app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 
 let mainWindow;
+
+// Uygulama açılınca backend konteynerlerini başlatır (zaten çalışıyorsa zararsız). Docker kapalıysa Docker Desktop'ı açıp ~2 dk dener.
+const DOCKER_DESKTOP = 'C:/Program Files/Docker/Docker/Docker Desktop.exe';
+function startBackend(tries = 0) {
+  execFile('docker', ['start', 'greenhouse_api', 'greenhouse_verdify_sync'], (err) => {
+    if (!err) return;
+    if (tries >= 12) return console.warn('Backend konteynerleri başlatılamadı:', err.message);
+    if (tries === 0 && fs.existsSync(DOCKER_DESKTOP)) spawn(DOCKER_DESKTOP, [], { detached: true, stdio: 'ignore' }).unref();
+    setTimeout(() => startBackend(tries + 1), 10000);
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -52,6 +65,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  startBackend();
   createWindow();
 
   app.on('activate', () => {

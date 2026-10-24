@@ -1,11 +1,11 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import asyncio
 import json
 import os
 import sys
 from collections import deque
-from aiokafka import AIOKafkaConsumer
 
 try:
     import torch
@@ -19,10 +19,15 @@ except ImportError:
     HAS_ML = False
     print("PyTorch or ML modules not installed. Running without ML features.")
 from app.db import init_db, close_db, insert_metrics, get_historical_data, get_latest_outdoor_weather
-from app.vision import get_verdify_vision_data, analyze_camera_feed, diagnose_leaf_image
+from app.vision import get_verdify_vision_data, diagnose_leaf_image
 from app.scada import get_scada_telemetry
+from app import grafana_data as gd
 
 app = FastAPI()
+
+@app.exception_handler(ValueError)
+async def value_error_handler(request, exc):
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,9 +36,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
-TOPIC_NAME = "raw-sensor-data"
 
 # Globals
 connected_clients = set()
@@ -79,18 +81,12 @@ async def api_telemetry(payload: dict):
     # Fetch latest outdoor weather for AI features
     outdoor_data = await get_latest_outdoor_weather()
     if outdoor_data:
-        ml_payload['outdoor_temp'] = outdoor_data.get('temperature_c', 0)
-        ml_payload['outdoor_hum'] = outdoor_data.get('humidity', 0)
-        ml_payload['solar'] = outdoor_data.get('solar_irradiance_w_m2', 0)
-        ml_payload['wind_speed'] = outdoor_data.get('wind_speed_kmh', 0)
-    else:
-        ml_payload['outdoor_temp'] = 0
-        ml_payload['outdoor_hum'] = 0
-        ml_payload['solar'] = 0
-        ml_payload['wind_speed'] = 0
+        ml_payload['outdoor_temp'] = outdoor_data['temperature_c']
+        ml_payload['outdoor_hum'] = outdoor_data['humidity']
+        ml_payload['solar'] = outdoor_data['solar_irradiance_w_m2']
+        ml_payload['wind_speed'] = outdoor_data['wind_speed_kmh']
+        sensor_buffer.append(ml_payload)  # no real outdoor data -> no ML sample
 
-    sensor_buffer.append(ml_payload)
-    
     # Broadcast raw sensor data to UI
     await broadcast_message({"type": "sensor_update", "data": payload})
     
@@ -141,130 +137,27 @@ async def broadcast_message(message: dict):
     for client in dead_clients:
         connected_clients.remove(client)
 
-@app.get("/api/ml/predict_today")
-async def api_ml_predict_today():
-    if model is None or not preprocessor.is_fitted:
-        return {"status": "error", "message": "Model not loaded"}
-        
+# Risk: Grafana saatlik verisiyle 6 saat sonrası VPD tahmini + eşik kuralı (app/ml/forecast.py)
+async def _forecast(end_date=None):
+    from app.ml import forecast
     try:
-        data = await get_historical_data(hours=24)
-        if not data:
-            return {"status": "error", "message": "No historical data found"}
-            
-        outdoor_data = await get_latest_outdoor_weather()
-        outdoor_temp = outdoor_data.get('temperature_c', 0) if outdoor_data else 0
-        outdoor_hum = outdoor_data.get('humidity', 0) if outdoor_data else 0
-        solar = outdoor_data.get('solar_irradiance_w_m2', 0) if outdoor_data else 0
-        wind_speed = outdoor_data.get('wind_speed_kmh', 0) if outdoor_data else 0
-
-        ml_buffer = []
-        for row in data:
-            ml_buffer.append({
-                'indoor_temp': row.get('temp', 0),
-                'indoor_hum': row.get('hum', 0),
-                'indoor_vpd': row.get('vpd', 0),
-                'outdoor_temp': outdoor_temp,
-                'outdoor_hum': outdoor_hum,
-                'solar': solar,
-                'wind_speed': wind_speed
-            })
-            
-        while len(ml_buffer) < 24:
-            ml_buffer.insert(0, ml_buffer[0])
-            
-        ml_buffer = ml_buffer[-24:]
-        
-        tensor_input = preprocessor.transform_inference(ml_buffer)
-        if tensor_input is not None:
-            with torch.no_grad():
-                inputs = torch.tensor(tensor_input, dtype=torch.float32)
-                outputs = model(inputs)
-                ai_risk_score = torch.sigmoid(outputs).item()
-                is_high_risk = ai_risk_score > 0.5
-                
-                return {
-                    "status": "success",
-                    "risk_probability": ai_risk_score,
-                    "is_high_risk": is_high_risk
-                }
-        return {"status": "error", "message": "Failed to transform input"}
+        return {"status": "success", **await asyncio.to_thread(forecast.predict, end_date)}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+@app.get("/api/ml/predict_today")
+async def api_ml_predict_today():
+    return await _forecast()
 
 @app.get("/api/ml/predict_date")
 async def api_ml_predict_date(date: str):
-    if model is None or not preprocessor.is_fitted:
-        return {"status": "error", "message": "Model not loaded"}
-        
-    try:
-        from app.db import pool
-        import datetime
-        parsed_date = datetime.datetime.strptime(date, "%Y-%m-%d").date()
-        
-        # Query 24 hours of data ending at the end of the given date
-        query = '''
-            SELECT 
-                time,
-                temperature as temp,
-                humidity as hum,
-                vpd
-            FROM sensor_metrics
-            WHERE DATE(time AT TIME ZONE 'UTC') <= $1::DATE
-            ORDER BY time DESC
-            LIMIT 24
-        '''
-        
-        async with pool.acquire() as conn:
-            records = await conn.fetch(query, parsed_date)
-            
-        if not records:
-            return {"status": "error", "message": "No data found for this date"}
-            
-        data = [dict(r) for r in reversed(records)]
-        
-        outdoor_data = await get_latest_outdoor_weather()
-        outdoor_temp = outdoor_data.get('temperature_c', 0) if outdoor_data else 0
-        outdoor_hum = outdoor_data.get('humidity', 0) if outdoor_data else 0
-        solar = outdoor_data.get('solar_irradiance_w_m2', 0) if outdoor_data else 0
-        wind_speed = outdoor_data.get('wind_speed_kmh', 0) if outdoor_data else 0
-
-        ml_buffer = []
-        for row in data:
-            ml_buffer.append({
-                'indoor_temp': row.get('temp', 0),
-                'indoor_hum': row.get('hum', 0),
-                'indoor_vpd': row.get('vpd', 0),
-                'outdoor_temp': outdoor_temp,
-                'outdoor_hum': outdoor_hum,
-                'solar': solar,
-                'wind_speed': wind_speed
-            })
-            
-        while len(ml_buffer) < 24:
-            ml_buffer.insert(0, ml_buffer[0])
-            
-        ml_buffer = ml_buffer[-24:]
-        
-        tensor_input = preprocessor.transform_inference(ml_buffer)
-        if tensor_input is not None:
-            with torch.no_grad():
-                inputs = torch.tensor(tensor_input, dtype=torch.float32)
-                outputs = model(inputs)
-                ai_risk_score = torch.sigmoid(outputs).item()
-                is_high_risk = ai_risk_score > 0.5
-                
-                return {
-                    "status": "success",
-                    "risk_probability": ai_risk_score,
-                    "is_high_risk": is_high_risk
-                }
-        return {"status": "error", "message": "Failed to transform input"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    return await _forecast(date)
 
 @app.on_event("startup")
 async def startup_event():
     await init_db()
+    from app.backfill import safe_backfill
+    asyncio.create_task(safe_backfill())  # eksik saatleri Grafana'dan arka planda tamamla
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -279,29 +172,63 @@ async def api_historical_data():
     data = await get_historical_data(hours=24)
     return {"data": data}
 
+# --- Gerçek veri: Verdify Grafana (verdify-tsdb); erişilemezse yerel TimescaleDB (saatlik arşiv) ---
 @app.get("/api/conditions/latest")
 async def api_latest_conditions():
     from app.db import get_latest_data
-    data = await get_latest_data()
+    from app import public_data as pdata
+    data = await asyncio.to_thread(pdata.latest_conditions) or await get_latest_data()
     return {"data": data}
+
+@app.post("/api/sync/refresh")
+async def api_sync_refresh():
+    """Arayüz açıldığında çağrılır: eksik saatleri arka planda tamamlar (10 dk'da bir)."""
+    from app.backfill import safe_backfill
+    asyncio.create_task(safe_backfill())
+    return {"status": "started"}
 
 @app.get("/api/conditions/date")
 async def api_conditions_by_date(date: str):
     from app.db import get_daily_average
-    data = await get_daily_average(date)
+    data = await asyncio.to_thread(gd.daily_conditions, date) or await get_daily_average(date)
     return {"data": data}
 
 @app.get("/api/trends/date")
 async def api_trends_by_date(date: str):
     from app.db import get_daily_trends
-    data = await get_daily_trends(date)
+    data = await asyncio.to_thread(gd.daily_trends, date) or await get_daily_trends(date)
     return {"data": data}
 
 @app.get("/api/weather/latest")
 async def api_latest_weather():
     from app.db import get_latest_outdoor_weather
-    data = await get_latest_outdoor_weather()
+    from app import public_data as pdata
+    data = await asyncio.to_thread(pdata.weather_latest) or await get_latest_outdoor_weather()
     return {"data": data}
+
+@app.get("/api/weather/solar-trend")
+async def api_solar_trend(range: str = "day"):
+    from app import public_data as pdata
+    return {"data": await asyncio.to_thread(pdata.solar_trend, range)}
+
+@app.get("/api/weather/dew-trend")
+async def api_dew_trend():
+    from app import public_data as pdata
+    return {"data": await asyncio.to_thread(pdata.dew_trend)}
+
+@app.get("/api/monitoring/charts")
+async def api_monitoring_charts(days: int = 7):
+    from app import public_data as pdata
+    return {"data": await asyncio.to_thread(pdata.monitoring_charts, days)}
+
+@app.get("/api/monitoring/kpi")
+async def api_monitoring_kpi():
+    from app import public_data as pdata
+    return {"data": await asyncio.to_thread(pdata.kpi_24h)}
+
+@app.get("/api/energy/day")
+async def api_energy_day(date: str):
+    return {"data": await asyncio.to_thread(gd.energy_day, date)}
 
 @app.post("/api/train/start")
 async def api_train_start():
@@ -310,41 +237,6 @@ async def api_train_start():
     # Start the training task in the background
     asyncio.create_task(run_training_task(broadcast_message))
     return {"status": "training_started"}
-
-@app.post("/api/test/load")
-async def api_test_load():
-    import paho.mqtt.publish as publish
-    # Publish 1000 fast messages to MQTT
-    try:
-        msgs = []
-        for i in range(1000):
-            payload = json.dumps({
-                "timestamp": f"2027-01-01T00:00:{i%60:02d}Z",
-                "sensor_id": "STRESS_TEST",
-                "temperature": 75.0,
-                "humidity": 60.0,
-                "co2_ppm": 800,
-                "vpd": 1.0,
-                "dew_point": 65.0,
-                "leaf_wetness": 0.5,
-                # Include original required fields for preprocessor
-                "temp_avg_f": 75.0,
-                "vpd_avg_kpa": 1.0,
-                "temp_control_f": 75.0,
-                "runtime_fan1_min": 0,
-                "runtime_fan2_min": 0,
-                "runtime_heat1_min": 0,
-                "runtime_vent_min": 0,
-                "runtime_fog_min": 0
-            })
-            msgs.append(("sensors/telemetry", payload, 0, False))
-        
-        # Publish multiple
-        mqtt_broker = os.getenv("MQTT_BROKER", "mosquitto")
-        publish.multiple(msgs, hostname=mqtt_broker, port=1883)
-        return {"status": "success", "messages_sent": 1000}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -361,10 +253,6 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.get("/api/vision/crop-health")
 async def api_vision_crop_health():
     return get_verdify_vision_data()
-
-@app.get("/api/vision/camera-analysis")
-async def api_vision_camera_analysis():
-    return analyze_camera_feed()
 
 @app.post("/api/vision/inspect-leaf")
 async def api_vision_inspect_leaf(file: UploadFile = File(...)):

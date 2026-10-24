@@ -6,11 +6,13 @@ import Monitoring from './components/Monitoring';
 import SystemHealth from './components/SystemHealth';
 
 import WeatherMap from './components/WeatherMap';
+import { animate, stagger } from 'motion/react';
 
 function App() {
   const [activeTab, setActiveTab] = useState('Overview');
   const [sensorData, setSensorData] = useState(null);
   const [aiRisk, setAiRisk] = useState(null);
+  const [offline, setOffline] = useState(false);
   const [trainingUpdate, setTrainingUpdate] = useState(null);
 
   useEffect(() => {
@@ -46,31 +48,38 @@ function App() {
       };
     };
 
+    // Backend hazır değilse (Docker yeni açılıyor) 3 sn'de bir yeniden dener; bağlanınca dakikada bir yeniler
+    let stopped = false;
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const fetchLatestData = async () => {
+      const res = await fetch('http://localhost:8000/api/conditions/latest'); // bağlanamazsa fırlatır -> yeniden dene
+      const json = await res.json();
+      if (json.data) setSensorData(json.data);
       try {
-        const res = await fetch('http://localhost:8000/api/conditions/latest');
-        const json = await res.json();
-        if (json.data) {
-          setSensorData(json.data);
-          
-          // Now fetch the AI prediction for today based on historical data
-          const mlRes = await fetch('http://localhost:8000/api/ml/predict_today');
-          const mlJson = await mlRes.json();
-          if (mlJson.status === "success") {
-            setAiRisk({
-              risk_probability: mlJson.risk_probability,
-              is_high_risk: mlJson.is_high_risk
-            });
-          }
+        const mlJson = await (await fetch('http://localhost:8000/api/ml/predict_today')).json();
+        if (mlJson.status === "success") {
+          setAiRisk({ risk_probability: mlJson.risk_probability, is_high_risk: mlJson.is_high_risk });
         }
-      } catch(e) {
-        console.error("Failed to fetch latest conditions or ML prediction:", e);
+      } catch (e) { /* risk paneli boş kalır, ana veri yine de gösterilir */ }
+    };
+    const refreshLoop = async () => {
+      while (!stopped) {
+        try {
+          await fetchLatestData();
+          setOffline(false);
+          fetch('http://localhost:8000/api/sync/refresh', { method: 'POST' }).catch(() => {}); // eksik saatleri arka planda tamamla
+          await sleep(60000);
+        } catch (e) {
+          setOffline(true);
+          await sleep(3000);
+        }
       }
     };
-    fetchLatestData();
+    refreshLoop();
     connect();
 
     return () => {
+      stopped = true;
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       if (ws) {
         ws.onclose = null;
@@ -86,10 +95,24 @@ function App() {
     };
   }, []);
 
+  // Sekme değişince görünür panelleri sırayla yukarı kaydırarak göster (sayfalar bağlı kaldığı için DOM üzerinden)
+  useEffect(() => {
+    if (activeTab === 'Weather') return;
+    const id = requestAnimationFrame(() => {
+      const els = [...document.querySelectorAll('.dashboard-layout .panel')].filter(e => e.offsetParent !== null);
+      if (!els.length) return;
+      // Bitince satır içi stilleri sil: kalan transform/opacity her paneli ayrı katman yapıp takvim açılır penceresini arkada bırakır
+      animate(els, { opacity: [0, 1], transform: ['translateY(18px)', 'none'] }, { duration: 0.45, delay: stagger(0.06), ease: 'easeOut' })
+        .then(() => els.forEach(e => { e.style.transform = ''; e.style.opacity = ''; }));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [activeTab]);
+
   return (
     <div className={`dashboard-layout ${activeTab === 'Weather' ? 'weather-active' : ''}`}>
       <Header activeTab={activeTab} onTabChange={setActiveTab} />
-      
+      {offline && <div style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', borderRadius: '12px', padding: '8px 16px', fontSize: '0.85rem', fontWeight: 600 }}>Sunucuya bağlanılıyor… (Docker açılıyorsa birkaç saniye sürebilir)</div>}
+
       <div style={{ display: activeTab === 'Overview' ? 'contents' : 'none' }}>
         <Overview sensorData={sensorData} aiRisk={aiRisk} />
       </div>

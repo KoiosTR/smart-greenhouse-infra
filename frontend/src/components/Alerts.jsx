@@ -7,9 +7,10 @@ export default function Alerts({ aiRisk }) {
   
   if (aiRisk && aiRisk.risk_probability !== undefined) {
     prob = aiRisk.risk_probability;
-    if (prob < 0.3) riskLevel = 'low';
-    else if (prob < 0.5) riskLevel = 'moderate';
-    else riskLevel = 'high';
+    // 'high' yalnızca histerezisli alarm aktifken (2 ardışık saat); tek saatlik sıçrama uyarı üretmez
+    if (aiRisk.is_high_risk) riskLevel = 'high';
+    else if (prob >= 0.3) riskLevel = 'moderate';
+    else riskLevel = 'low';
   }
 
   const alertCount = riskLevel === 'high' ? 1 : 0;
